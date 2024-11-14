@@ -1,14 +1,19 @@
 #include <Arduino.h>
 #include <WiFiManager.h>
 
+// Définition des constantes
+const char* DEFAULT_AP_SSID = "ESP32-Access-Point";
+const char* DEFAULT_AP_PASSWORD = "12345678";
+const char* DEFAULT_HOSTNAME = "esp32";
+const char* CONFIG_FILE = "/wifi_config.json";
+const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
 
-    WiFiManager::WiFiManager(APIServer& apiServer) : _apiServer(&apiServer) {
+    WiFiManager::WiFiManager() {
         if (!SPIFFS.begin(true)) {
             Serial.println("SPIFFS Mount Failed");
         }
         initDefaultConfig();
         loadConfig();
-        registerAPIRoutes();
         saveConfig();
     }
 
@@ -24,7 +29,7 @@
         apConfig.enabled = true;
         apConfig.ssid = DEFAULT_AP_SSID;
         apConfig.password = DEFAULT_AP_PASSWORD;
-        apConfig.ip = IPAddress(192, 168, 4, 1);
+        apConfig.ip = DEFAULT_AP_IP;
         apConfig.gateway = apConfig.ip;  // Gateway = IP de l'AP
         apConfig.subnet = IPAddress(255, 255, 255, 0);
         apConfig.channel = 1;
@@ -36,38 +41,6 @@
 
         // Hostname par défaut
         hostname = DEFAULT_HOSTNAME;
-    }
-
-    /* @brief Fonction pour envoyer l'état via WebSocket */
-    /* @return void */
-    void WiFiManager::wsBroadcastStatus() {
-        // Construire le statut actuel
-        refreshAPStatus();
-        refreshSTAStatus();
-        
-        StaticJsonDocument<256> currentStatus;
-        
-        JsonObject apObj = currentStatus["ap"].to<JsonObject>();
-        apStatus.toJSON(apObj);
-
-        JsonObject staObj = currentStatus["sta"].to<JsonObject>();
-        staStatus.toJSON(staObj);
-
-        // Comparer avec l'état précédent
-        bool stateChanged = (_lastStatus.isNull() || _lastStatus != currentStatus);
-
-        // N'envoyer que si l'état a changé
-        if (stateChanged) {
-            StaticJsonDocument<512> wrapper;
-            wrapper["type"] = "wifi_status";
-            wrapper["data"] = currentStatus;
-            
-            String message;
-            serializeJson(wrapper, message);
-            _apiServer->textAll(message);
-
-            _lastStatus = currentStatus;
-        }
     }
 
     /* @brief Méthodes de gestion de la configuration AP */
@@ -273,13 +246,13 @@
             if (!success) return false;
             
             bool result = WiFi.softAPConfig(apConfig.ip, apConfig.gateway, apConfig.subnet);
-            apStatus.enabled = true; // Vrai car AP activé même si échec de la configuration
-            wsBroadcastStatus(); // Envoyer l'état après le changement
+            apStatus.enabled = true; // Vrai car AP activé même si échec de la configuratio
+            notifyStateChange();  // Notification du changement d'état
             return result;
         }
         WiFi.softAPdisconnect(true);
         apStatus.enabled = false;
-        wsBroadcastStatus(); // Envoyer l'état après le changement
+        notifyStateChange();  // Notification du changement d'état
         return true;
     }
 
@@ -296,15 +269,15 @@
             WiFi.begin(staConfig.ssid.c_str(), staConfig.password.c_str());
             staStatus.enabled = true;
             staStatus.busy = true;
-            staStatus.connectionStartTime = millis();  // Démarrer le timer
-            
+            staStatus.connectionStartTime = millis();
+            notifyStateChange();  // Notification du changement d'état
             return true;
         }
         
         WiFi.disconnect(true);
         staStatus.enabled = false;
         staStatus.busy = false;
-        wsBroadcastStatus();
+        notifyStateChange();  // Notification du changement d'état
         return true;
     }
 
@@ -365,112 +338,9 @@
         return true;
     }
 
-    /* @brief Enregistrer les routes API */
-    /* @return void */
-    void WiFiManager::registerAPIRoutes() {
-        _apiServer->addAPI([this](AsyncWebServer& server) {
-            // Route pour obtenir la configuration complète
-            server.on("/api/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
-                StaticJsonDocument<1024> doc;
-                doc["hostname"] = this->hostname;
-                
-                JsonObject apObj = doc["ap"].to<JsonObject>();
-                apConfig.toJSON(apObj);
-                
-                JsonObject staObj = doc["sta"].to<JsonObject>();
-                staConfig.toJSON(staObj);
-                
-                String response;
-                serializeJson(doc, response);
-                request->send(200, "application/json", response);
-            });
-
-            // Route pour mettre à jour le hostname
-            server.on("/api/hostname", HTTP_POST, [](AsyncWebServerRequest *request) {
-                // Cette route sera gérée par AsyncCallbackJsonWebHandler
-            }, nullptr, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-                StaticJsonDocument<64> doc;
-                DeserializationError error = deserializeJson(doc, (const char*)data);
-                
-                if (!error && doc["hostname"].is<String>()) {
-                    bool success = this->setHostname(doc["hostname"].as<String>());
-                    String response = "{\"success\":" + String(success ? "true" : "false") + "}";
-                    request->send(200, "application/json", response);
-                } else {
-                    request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid request\"}");
-                }
-            });
-
-            // Route pour scanner les réseaux WiFi
-            server.on("/api/networks/scan", HTTP_GET, [this](AsyncWebServerRequest *request) {
-                JsonObject obj;
-                this->getAvailableNetworks(obj);
-                String response;
-                serializeJson(obj, response);
-                request->send(200, "application/json", response);
-            });
-
-            // Route pour mettre à jour la configuration AP
-            server.on("/api/ap/config", HTTP_POST, [](AsyncWebServerRequest *request) {
-                // Cette route sera gérée par AsyncCallbackJsonWebHandler
-            }, nullptr, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-                StaticJsonDocument<512> doc;
-                DeserializationError error = deserializeJson(doc, (const char*)data);
-                
-                if (!error) {
-                    bool success = this->setAPConfig(doc.as<JsonObject>());
-                    String response = "{\"success\":" + String(success ? "true" : "false") + "}";
-                    request->send(200, "application/json", response);
-                } else {
-                    request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid request\"}");
-                }
-            });
-
-            // Route pour mettre à jour la configuration STA
-            server.on("/api/sta/config", HTTP_POST, [](AsyncWebServerRequest *request) {
-                // Cette route sera gérée par AsyncCallbackJsonWebHandler
-            }, nullptr, [this](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
-                StaticJsonDocument<512> doc;
-                DeserializationError error = deserializeJson(doc, (const char*)data);
-                
-                if (!error) {
-                    bool success = this->setSTAConfig(doc.as<JsonObject>());
-                    String response = "{\"success\":" + String(success ? "true" : "false") + "}";
-                    request->send(200, "application/json", response);
-                } else {
-                    request->send(400, "application/json", "{\"success\":false,\"error\":\"Invalid request\"}");
-                }
-            });
-
-            // Route pour servir la page de configuration WiFi
-            server.on("/wifi", HTTP_GET, [](AsyncWebServerRequest *request) {
-                request->send(SPIFFS, "/wifimanager.html", "text/html");
-            });
-
-            // Route pour obtenir le statut des connexions
-            _apiServer->addAPI([this](AsyncWebServer& server) {
-                server.on("/api/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-                    refreshAPStatus();
-                    refreshSTAStatus();
-
-                    StaticJsonDocument<256> doc;
-                    JsonObject ap = doc["ap"].to<JsonObject>();
-                    apStatus.toJSON(ap);
-                    JsonObject sta = doc["sta"].to<JsonObject>();
-                    staStatus.toJSON(sta);
-                    
-                    String response;
-                    serializeJson(doc, response);
-
-                    request->send(200, "application/json", response);
-                });
-            });
-        });
-    }
-
     /* @brief Vérifier périodiquement l'état */
     /* @return void */
-    void WiFiManager::loop() {
+    void WiFiManager::poll() {
         static unsigned long lastCheck = 0;
         const unsigned long interval = 5000; // Vérifier toutes les 5 secondes
         
@@ -485,8 +355,6 @@
             // Gérer les reconnexions si nécessaire
             handleReconnections();
             
-            // Diffuser le statut
-            wsBroadcastStatus();
         }
     }
 
@@ -548,6 +416,26 @@
     }
 
 
+    //////////////////////
+    // DIRECT ACCESS
+    //////////////////////
+
+    void WiFiManager::getAPStatus(JsonObject& obj) const {
+        apStatus.toJSON(obj);
+    }
+
+    void WiFiManager::getSTAStatus(JsonObject& obj) const {
+        staStatus.toJSON(obj);
+    }
+
+    void WiFiManager::getAPConfig(JsonObject& obj) const {
+        apConfig.toJSON(obj);
+    }
+
+    void WiFiManager::getSTAConfig(JsonObject& obj) const {
+        staConfig.toJSON(obj);
+    }
+
 
     //////////////////////
     // HELPERS
@@ -606,4 +494,16 @@
         // Vérifier que c'est un masque valide (tous les 1 sont contigus)
         uint32_t zeroes = ~binary + 1;
         return (binary & (zeroes - 1)) == 0;
+    }
+
+    // Méthode pour enregistrer le callback
+    void WiFiManager::onStateChange(std::function<void()> callback) {
+        _onStateChange = callback;
+    }
+
+    // Méthode utilitaire pour notifier les changements
+    void WiFiManager::notifyStateChange() {
+        if (_onStateChange) {
+            _onStateChange();
+        }
     }

@@ -3,20 +3,20 @@
 
 #include <Arduino.h>
 #include <WiFi.h>
+#include <ESPAsyncWebServer.h>
 #include <ESPmDNS.h>
 #include <SPIFFS.h>
 #include <ArduinoJson.h>
 #include <vector>
-#include "APIServer.h"
+#include <functional>
 
-// Configurations par défaut
-const char* DEFAULT_AP_SSID = "ESP32-Access-Point";
-const char* DEFAULT_AP_PASSWORD = "12345678";
-const char* DEFAULT_HOSTNAME = "esp32";
-const char* CONFIG_FILE = "/wifi_config.json";
-const IPAddress DEFAULT_AP_IP = IPAddress(192, 168, 4, 1);
+// Déclarations externes des constantes
+extern const char* DEFAULT_AP_SSID;
+extern const char* DEFAULT_AP_PASSWORD;
+extern const char* DEFAULT_HOSTNAME;
+extern const char* CONFIG_FILE;
+extern const IPAddress DEFAULT_AP_IP;
 
-    
 // Structure commune pour le statut des connexions
 struct ConnectionStatus {
     bool enabled = false;
@@ -86,25 +86,24 @@ private:
     String hostname;
     ConnectionConfig apConfig, staConfig;
     ConnectionStatus apStatus, staStatus;
-    APIServer* _apiServer;
     StaticJsonDocument<256> _lastStatus;
+    std::function<void()> _onStateChange;
 
     static const unsigned long CONNECTION_TIMEOUT = 30000;  // 30 secondes timeout
     static const unsigned long RETRY_INTERVAL = 30000;      // 30 secondes entre les tentatives
 
     void initDefaultConfig();
-    void wsBroadcastStatus();
     bool applyAPConfig();
     bool applySTAConfig();
     bool saveConfig();
     bool loadConfig();
-    void registerAPIRoutes();
     bool isValidIPv4(const String& ip);
     bool isValidSubnetMask(const String& subnet);
     void handleReconnections();
+    void notifyStateChange();
 
 public:
-    WiFiManager(APIServer& apiServer);
+    WiFiManager();
     ~WiFiManager();
 
     // Configuration methods
@@ -127,7 +126,16 @@ public:
     bool disconnectSTA();
 
     // Main loop method
-    void loop();
+    void poll();
+
+    // Direct object access methods
+    void getAPStatus(JsonObject& obj) const;
+    void getSTAStatus(JsonObject& obj) const;
+    void getAPConfig(JsonObject& obj) const;
+    void getSTAConfig(JsonObject& obj) const;
+
+    // State change notification callback registration
+    void onStateChange(std::function<void()> callback);
 };
 
 #endif // _WIFIMANAGER_H_

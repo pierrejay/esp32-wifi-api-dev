@@ -1,15 +1,18 @@
 #include <Arduino.h>
-#include "WiFiManager.h"
 #include "APIServer.h"
-
+#include "WiFiManager.h"
+#include "WiFiManagerAPI.h"
 // Déclaration des objets globaux
 APIServer apiServer(80);  // Création du serveur sur le port 80
-WiFiManager wifiManager(apiServer);  // Allocation statique, passage par référence
+WiFiManager wifiManager;  // Allocation statique, passage par référence
+WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
 
 void setup() {
     // Initialisation de la communication série
     Serial.begin(115200);
     Serial.println("Démarrage...");
+
+    digitalWrite(LED_BUILTIN, HIGH);
 
     // Initialisation du système de fichiers SPIFFS
     if(!SPIFFS.begin(true)) {
@@ -21,12 +24,12 @@ void setup() {
     apiServer.begin();
 
     Serial.println("Système initialisé");
+
+    digitalWrite(LED_BUILTIN, LOW);
 }
 
 void loop() {
-    // Gestion des WebSockets
+    wifiManager.poll();
+    wifiManagerAPI.poll();
     apiServer.poll();
-
-    // Autres tâches périodiques si nécessaire
-    delay(10); // Petit délai pour éviter de surcharger le CPU
 }
