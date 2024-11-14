@@ -12,7 +12,13 @@
         saveConfig();
     }
 
-    // Initialisation des configurations par défaut
+
+    //////////////////////
+    // CLASS METHODS
+    //////////////////////
+
+    /* @brief Initialisation des configurations par défaut */
+    /* @return void */
     void WiFiManager::initDefaultConfig() {
         // Configuration AP par défaut
         apConfig.enabled = true;
@@ -32,7 +38,8 @@
         hostname = DEFAULT_HOSTNAME;
     }
 
-    // Fonction pour envoyer l'état via WebSocket
+    /* @brief Fonction pour envoyer l'état via WebSocket */
+    /* @return void */
     void WiFiManager::wsBroadcastStatus() {
         // Construire le statut actuel
         refreshAPStatus();
@@ -63,7 +70,9 @@
         }
     }
 
-    // Méthodes de gestion de la configuration AP
+    /* @brief Méthodes de gestion de la configuration AP */
+    /* @param const JsonObject& config : Configuration à appliquer */
+    /* @return bool */
     bool WiFiManager::setAPConfig(const JsonObject& config) {
         // Créer une copie temporaire de la configuration actuelle
         ConnectionConfig tempConfig = apConfig;
@@ -117,7 +126,9 @@
         return applyAPConfig();
     }
 
-    // Méthodes de gestion de la configuration STA
+    /* @brief Méthodes de gestion de la configuration STA */
+    /* @param const JsonObject& config : Configuration à appliquer */
+    /* @return bool */
     bool WiFiManager::setSTAConfig(const JsonObject& config) {
         // Créer une copie temporaire de la configuration actuelle
         ConnectionConfig tempConfig = staConfig;
@@ -178,7 +189,9 @@
         return applySTAConfig();
     }
 
-    // Méthodes de scan des réseaux
+    /* @brief Méthodes de scan des réseaux */
+    /* @param JsonObject& obj : Objet JSON pour stocker les résultats */
+    /* @return void */
     void WiFiManager::getAvailableNetworks(JsonObject& obj) {
         int n = WiFi.scanNetworks();
         if (n > 10) {  // Limite arbitraire pour la sécurité
@@ -270,7 +283,8 @@
         return true;
     }
 
-    // Appliquer la configuration STA
+    /* @brief Appliquer la configuration STA */
+    /* @return bool */
     bool WiFiManager::applySTAConfig() {
         if (staConfig.enabled) {
             WiFi.mode(apConfig.enabled ? WIFI_AP_STA : WIFI_STA);
@@ -294,7 +308,8 @@
         return true;
     }
 
-    // Sauvegarder la configuration
+    /* @brief Sauvegarder la configuration */
+    /* @return bool */
     bool WiFiManager::saveConfig() {
         StaticJsonDocument<1024> doc;
         
@@ -320,7 +335,8 @@
         return true;
     }
 
-    // Charger la configuration
+    /* @brief Charger la configuration */
+    /* @return bool */
     bool WiFiManager::loadConfig() {
         if (!SPIFFS.exists(CONFIG_FILE)) return false;
         
@@ -349,6 +365,8 @@
         return true;
     }
 
+    /* @brief Enregistrer les routes API */
+    /* @return void */
     void WiFiManager::registerAPIRoutes() {
         _apiServer->addAPI([this](AsyncWebServer& server) {
             // Route pour obtenir la configuration complète
@@ -450,7 +468,8 @@
         });
     }
 
-    // Ajouter une méthode pour vérifier périodiquement l'état
+    /* @brief Vérifier périodiquement l'état */
+    /* @return void */
     void WiFiManager::loop() {
         static unsigned long lastCheck = 0;
         const unsigned long interval = 5000; // Vérifier toutes les 5 secondes
@@ -471,7 +490,8 @@
         }
     }
 
-    // Nouvelle méthode pour gérer les reconnexions
+    /* @brief Gérer les reconnexions */
+    /* @return void */
     void WiFiManager::handleReconnections() {
         unsigned long currentTime = millis();
         
@@ -519,17 +539,23 @@
         }
     }
 
+    /* @brief Destructeur */
+    /* @return void */
     WiFiManager::~WiFiManager() {
         // Déconnexion propre
         WiFi.disconnect(true);
         WiFi.softAPdisconnect(true);
-        SPIFFS.end();
     }
 
 
 
-    // Helpers
+    //////////////////////
+    // HELPERS
+    //////////////////////
 
+    /* @brief Vérifier si une chaîne est une adresse IPv4 valide */
+    /* @param const String& ip : Chaîne à vérifier */
+    /* @return bool */
     bool WiFiManager::isValidIPv4(const String& ip) {
         if (ip.isEmpty()) return false;
         
@@ -566,6 +592,9 @@
         return dots == 3;
     }
 
+    /* @brief Vérifier si une chaîne est un masque de sous-réseau valide */
+    /* @param const String& subnet : Chaîne à vérifier */
+    /* @return bool */
     bool WiFiManager::isValidSubnetMask(const String& subnet) {
         if (!isValidIPv4(subnet)) return false;
         
