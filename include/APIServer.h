@@ -15,16 +15,13 @@ public:
         _server.addHandler(&_ws);
     }
     
-    void addAPI(std::function<void(AsyncWebServer&)> registerRoutes) {
-        _apis.push_back(registerRoutes);
-    }
-
     AsyncWebServer& server() { return _server; }
     
     void begin() {
-        for(const auto& registerRoutes : _apis) {
-            registerRoutes(_server);
-        }
+        _server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+        _server.onNotFound([](AsyncWebServerRequest *request){
+            request->send(404, "text/plain", "Page non trouvée");
+        });
         _server.begin();
     }
 
@@ -50,7 +47,6 @@ public:
 private:
     AsyncWebServer _server;
     AsyncWebSocket _ws;
-    std::vector<std::function<void(AsyncWebServer&)>> _apis;
     unsigned long _lastUpdate;
     std::queue<String> _messageQueue;
 

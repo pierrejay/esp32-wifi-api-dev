@@ -103,7 +103,8 @@ private:
     void notifyStateChange();
 
 public:
-    WiFiManager();
+    WiFiManager() = default;
+    bool begin();
     ~WiFiManager();
 
     // Configuration methods

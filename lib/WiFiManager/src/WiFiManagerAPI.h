@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 #include "WiFiManager.h"
 
-#define WS_POLL_INTERVAL 500 // Intervalle minimum entre les mises à jour WebSocket en millisecondes
+#define WS_SEND_INTERVAL 500 // Intervalle minimum entre les mises à jour WebSocket en millisecondes
 
 /**
  * @brief Classe API pour le gestionnaire WiFi
@@ -46,7 +46,7 @@ public:
      */
     void poll() {
         unsigned long now = millis();
-        if (now - _lastWsUpdate > WS_POLL_INTERVAL) {
+        if (now - _lastWsUpdate > WS_SEND_INTERVAL) {
             if (detectChanges()) {
                 sendWsUpdates();
                 _lastWsUpdate = now;
@@ -58,7 +58,7 @@ private:
     WiFiManager& _wifiManager;
     APIServer& _apiServer;
     unsigned long _lastWsUpdate;
-    StaticJsonDocument<512> _previousState;
+    StaticJsonDocument<1024> _previousState;
 
     /**
      * @brief Enregistre toutes les routes API
@@ -109,7 +109,7 @@ private:
      * @brief Gère la requête GET pour obtenir le statut
      */
     void handleGetStatus(AsyncWebServerRequest* request) {
-        StaticJsonDocument<512> doc;
+        StaticJsonDocument<1024> doc;
         JsonObject status = doc.to<JsonObject>();
         
         // Les statuts sont déjà rafraîchis par la boucle principale
@@ -128,7 +128,7 @@ private:
      * @brief Gère la requête GET pour obtenir la configuration
      */
     void handleGetConfig(AsyncWebServerRequest* request) {
-        StaticJsonDocument<512> doc;
+        StaticJsonDocument<1024> doc;
         
         doc["hostname"] = _wifiManager.getHostname();
         
@@ -147,7 +147,7 @@ private:
      * @brief Gère la requête GET pour scanner les réseaux
      */
     void handleScanNetworks(AsyncWebServerRequest* request) {
-        StaticJsonDocument<1024> doc;
+        StaticJsonDocument<2048> doc;
         JsonObject networks = doc.to<JsonObject>();
         _wifiManager.getAvailableNetworks(networks);
 
@@ -193,7 +193,7 @@ private:
      * @return true si des changements sont détectés
      */
     bool detectChanges() {
-        StaticJsonDocument<512> currentState;
+        StaticJsonDocument<1024> currentState;
         
         JsonObject apStatus = currentState["ap"].to<JsonObject>();
         _wifiManager.getAPStatus(apStatus);
@@ -212,7 +212,7 @@ private:
      * @brief Envoie les mises à jour d'état via WebSocket
      */
     void sendWsUpdates() {
-        StaticJsonDocument<512> doc;
+        StaticJsonDocument<1024> doc;
         doc["type"] = "wifi_status";
         
         JsonObject data = doc["data"].to<JsonObject>();

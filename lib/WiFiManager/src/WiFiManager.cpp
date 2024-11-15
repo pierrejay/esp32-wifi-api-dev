@@ -8,15 +8,6 @@ const char* DEFAULT_HOSTNAME = "esp32";
 const char* CONFIG_FILE = "/wifi_config.json";
 const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
 
-    WiFiManager::WiFiManager() {
-        if (!SPIFFS.begin(true)) {
-            Serial.println("SPIFFS Mount Failed");
-        }
-        initDefaultConfig();
-        loadConfig();
-        saveConfig();
-    }
-
 
     //////////////////////
     // CLASS METHODS
@@ -33,6 +24,7 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         apConfig.gateway = apConfig.ip;  // Gateway = IP de l'AP
         apConfig.subnet = IPAddress(255, 255, 255, 0);
         apConfig.channel = 1;
+        
 
         // Configuration STA par défaut
         staConfig.enabled = false;
@@ -41,6 +33,9 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
 
         // Hostname par défaut
         hostname = DEFAULT_HOSTNAME;
+
+        applyAPConfig();
+        applySTAConfig();
     }
 
     /* @brief Méthodes de gestion de la configuration AP */
@@ -233,26 +228,40 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
     // Appliquer la configuration AP
     bool WiFiManager::applyAPConfig() {
         if (apConfig.enabled) {
+            Serial.println("WIFIMANAGER: Application de la configuration AP:");
+            Serial.printf("- SSID: %s\n", apConfig.ssid.c_str());
+            Serial.printf("- IP: %s\n", apConfig.ip.toString().c_str());
+            Serial.printf("- Canal: %d\n", apConfig.channel);
+            
             WiFi.mode(staConfig.enabled ? WIFI_AP_STA : WIFI_AP);
             
             bool success = WiFi.softAP(
                 apConfig.ssid.c_str(),
                 apConfig.password.c_str(),
-                apConfig.channel,
-                apConfig.hideSSID,
-                apConfig.maxConnections
+                apConfig.channel
             );
             
-            if (!success) return false;
+            if (!success) {
+                Serial.println("WIFIMANAGER: Échec de la configuration du point d'accès");
+                return false;
+            }
             
             bool result = WiFi.softAPConfig(apConfig.ip, apConfig.gateway, apConfig.subnet);
-            apStatus.enabled = true; // Vrai car AP activé même si échec de la configuratio
-            notifyStateChange();  // Notification du changement d'état
+            if (!result) {
+                Serial.println("WIFIMANAGER: Échec de la configuration IP du point d'accès");
+            } else {
+                Serial.printf("WIFIMANAGER: Point d'accès configuré avec succès (IP: %s)\n", WiFi.softAPIP().toString().c_str());
+            }
+            
+            apStatus.enabled = true;
+            notifyStateChange();
             return result;
         }
+        
+        Serial.println("WIFIMANAGER: Désactivation du point d'accès");
         WiFi.softAPdisconnect(true);
         apStatus.enabled = false;
-        notifyStateChange();  // Notification du changement d'état
+        notifyStateChange();
         return true;
     }
 
@@ -260,9 +269,17 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
     /* @return bool */
     bool WiFiManager::applySTAConfig() {
         if (staConfig.enabled) {
+            Serial.println("WIFIMANAGER: Application de la configuration STA:");
+            Serial.printf("- SSID: %s\n", staConfig.ssid.c_str());
+            Serial.printf("- Mode DHCP: %s\n", staConfig.dhcp ? "Oui" : "Non");
+            
             WiFi.mode(apConfig.enabled ? WIFI_AP_STA : WIFI_STA);
             
             if (!staConfig.dhcp) {
+                Serial.println("WIFIMANAGER: Configuration IP statique:");
+                Serial.printf("- IP: %s\n", staConfig.ip.toString().c_str());
+                Serial.printf("- Gateway: %s\n", staConfig.gateway.toString().c_str());
+                Serial.printf("- Subnet: %s\n", staConfig.subnet.toString().c_str());
                 WiFi.config(staConfig.ip, staConfig.gateway, staConfig.subnet);
             }
             
@@ -270,27 +287,26 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
             staStatus.enabled = true;
             staStatus.busy = true;
             staStatus.connectionStartTime = millis();
-            notifyStateChange();  // Notification du changement d'état
+            
+            Serial.println("WIFIMANAGER: Tentative de connexion au réseau WiFi...");
+            notifyStateChange();
             return true;
         }
         
+        Serial.println("WIFIMANAGER: Déconnexion du réseau WiFi");
         WiFi.disconnect(true);
         staStatus.enabled = false;
         staStatus.busy = false;
-        notifyStateChange();  // Notification du changement d'état
+        notifyStateChange();
         return true;
     }
 
     /* @brief Sauvegarder la configuration */
     /* @return bool */
     bool WiFiManager::saveConfig() {
-        StaticJsonDocument<1024> doc;
+        Serial.println("WIFIMANAGER: Sauvegarde de la configuration...");
         
-        // Ajouter une gestion des erreurs
-        if (!SPIFFS.begin()) {
-            Serial.println("Erreur SPIFFS lors de la sauvegarde");
-            return false;
-        }
+        StaticJsonDocument<1024> doc;
         
         doc["hostname"] = hostname;
         
@@ -301,38 +317,76 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         staConfig.toJSON(staObj);
         
         File file = SPIFFS.open(CONFIG_FILE, "w");
-        if (!file) return false;
+        if (!file) {
+            Serial.println("WIFIMANAGER: Erreur lors de l'ouverture du fichier pour la sauvegarde");
+            return false;
+        }
         
-        serializeJson(doc, file);
+        if (serializeJson(doc, file) == 0) {
+            Serial.println("WIFIMANAGER: Erreur lors de l'écriture de la configuration");
+            file.close();
+            return false;
+        }
+        
         file.close();
+        Serial.println("WIFIMANAGER: Configuration sauvegardée avec succès");
         return true;
     }
 
     /* @brief Charger la configuration */
     /* @return bool */
     bool WiFiManager::loadConfig() {
-        if (!SPIFFS.exists(CONFIG_FILE)) return false;
+        Serial.println("WIFIMANAGER: Chargement de la configuration...");
+        
+        if (!SPIFFS.exists(CONFIG_FILE)) {
+            Serial.println("WIFIMANAGER: Fichier de configuration non trouvé, utilisation des paramètres par défaut");
+            return false;
+        }
         
         File file = SPIFFS.open(CONFIG_FILE, "r");
-        if (!file) return false;
+        if (!file) {
+            Serial.println("WIFIMANAGER: Erreur lors de l'ouverture du fichier de configuration");
+            return false;
+        }
         
         StaticJsonDocument<1024> doc;
         DeserializationError error = deserializeJson(doc, file);
         file.close();
         
-        if (error) return false;
+        if (error) {
+            Serial.print("WIFIMANAGER: Erreur lors de la désérialisation JSON: ");
+            Serial.println(error.c_str());
+            return false;
+        }
+
+        Serial.println("WIFIMANAGER: Configuration chargée avec succès:");
 
         // Charger hostname
-        if (doc["hostname"].is<String>()) hostname = doc["hostname"].as<String>();
+        if (doc["hostname"].is<String>()) {
+            hostname = doc["hostname"].as<String>();
+            Serial.printf("- Hostname: %s\n", hostname.c_str());
+        }
 
         // Charger config AP
         if (doc["ap"].is<JsonObject>()) {
-            setAPConfig(doc["ap"].as<JsonObject>());
+            Serial.println("WIFIMANAGER: Configuration AP trouvée:");
+            JsonObject apJson = doc["ap"].as<JsonObject>();
+            setAPConfig(apJson);
+            Serial.printf("- SSID: %s\n", apConfig.ssid.c_str());
+            Serial.printf("- IP: %s\n", apConfig.ip.toString().c_str());
+            Serial.printf("- Canal: %d\n", apConfig.channel);
         }
 
         // Charger config STA
         if (doc["sta"].is<JsonObject>()) {
-            setSTAConfig(doc["sta"].as<JsonObject>());
+            Serial.println("WIFIMANAGER: Configuration STA trouvée:");
+            JsonObject staJson = doc["sta"].as<JsonObject>();
+            setSTAConfig(staJson);
+            Serial.printf("- SSID: %s\n", staConfig.ssid.c_str());
+            Serial.printf("- Mode DHCP: %s\n", staConfig.dhcp ? "Oui" : "Non");
+            if (!staConfig.dhcp) {
+                Serial.printf("- IP Fixe: %s\n", staConfig.ip.toString().c_str());
+            }
         }
         
         return true;
@@ -366,24 +420,26 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         // Gestion du mode Station
         if (staConfig.enabled) {
             if (staStatus.busy) {
-                // Vérifier si on est connecté ou en timeout
                 if (WiFi.status() == WL_CONNECTED) {
                     staStatus.busy = false;
                     staStatus.connected = true;
-                    Serial.println("STA connecté avec succès");
+                    Serial.println("WIFIMANAGER: Connexion WiFi établie:");
+                    Serial.printf("- SSID: %s\n", WiFi.SSID().c_str());
+                    Serial.printf("- IP: %s\n", WiFi.localIP().toString().c_str());
+                    Serial.printf("- Force du signal: %d dBm\n", WiFi.RSSI());
                 } 
                 else if (currentTime - staStatus.connectionStartTime >= CONNECTION_TIMEOUT) {
                     staStatus.busy = false;
                     staStatus.connected = false;
+                    Serial.println("WIFIMANAGER: Timeout de connexion WiFi");
                     WiFi.disconnect(true);
-                    Serial.println("STA timeout de connexion");
                 }
             }
             else if (!staStatus.connected) {
                 static unsigned long lastSTARetry = 0;
                 
                 if (currentTime - lastSTARetry >= RETRY_INTERVAL) {
-                    Serial.println("Tentative de reconnexion STA...");
+                    Serial.println("WIFIMANAGER: Nouvelle tentative de connexion WiFi...");
                     lastSTARetry = currentTime;
                     
                     WiFi.disconnect(true);
@@ -396,7 +452,7 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         
         // Gestion du mode AP
         if (apConfig.enabled && !apStatus.enabled) {
-            Serial.println("Redémarrage du point d'accès...");
+            Serial.println("WIFIMANAGER: Redémarrage du point d'accès...");
             applyAPConfig();
         }
         
@@ -506,4 +562,20 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         if (_onStateChange) {
             _onStateChange();
         }
+    }
+
+    bool WiFiManager::begin() {
+        // Initialisation SPIFFS déjà faite dans main.cpp
+        initDefaultConfig();
+
+        // if (!loadConfig()) {
+        //     Serial.println("WIFIMANAGER: Erreur de chargement de la configuration, utilisation des valeurs par défaut");
+        // }
+        
+        if (!saveConfig()) {
+            Serial.println("WIFIMANAGER: Erreur de sauvegarde de la configuration");
+            return false;
+        }
+
+        return true;
     }
