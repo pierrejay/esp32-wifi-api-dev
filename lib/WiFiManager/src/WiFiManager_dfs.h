@@ -96,8 +96,8 @@ struct ConnectionStatus {
         obj["busy"] = busy;
         obj["connected"] = connected;
         obj["ip"] = ip.toString();
-        obj["sta_rssi"] = rssi;
-        if (clients > 0) obj["ap_clients"] = clients;  // Uniquement si pertinent
+        if (rssi) obj["rssi"] = rssi;
+        if (clients > 0) obj["clients"] = clients;  // Uniquement si pertinent (AP)
     }
 };
 
@@ -127,15 +127,15 @@ struct ConnectionConfig {
         
         // Ajouter les champs spécifiques selon le type
         if (channel > 0) {  // Si c'est une config AP
-            obj["ap_gateway"] = gateway.toString();
-            obj["ap_subnet"] = subnet.toString();
-            obj["ap_channel"] = channel;
-            obj["ap_hideSSID"] = hideSSID;
+            obj["gateway"] = gateway.toString();
+            obj["subnet"] = subnet.toString();
+            obj["channel"] = channel;
+            obj["hideSSID"] = hideSSID;
         } else {  // Si c'est une config STA
             obj["dhcp"] = dhcp;
             if (!dhcp) {
-                obj["sta_gateway"] = gateway.toString();
-                obj["sta_subnet"] = subnet.toString();
+                obj["gateway"] = gateway.toString();
+                obj["subnet"] = subnet.toString();
             }
         }
     }

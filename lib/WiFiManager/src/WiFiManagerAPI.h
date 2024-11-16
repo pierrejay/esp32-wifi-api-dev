@@ -7,7 +7,7 @@
 #include <ArduinoJson.h>
 #include "WiFiManager.h"
 
-#define WS_SEND_INTERVAL 500 // Intervalle minimum entre les mises à jour WebSocket en millisecondes
+constexpr unsigned long WS_SEND_INTERVAL = 500; // Intervalle minimum entre les mises à jour WebSocket en millisecondes
 
 /**
  * @brief Classe API pour le gestionnaire WiFi
@@ -29,7 +29,7 @@ public:
         
         // S'abonner aux changements d'état
         _wifiManager.onStateChange([this]() {
-            sendWsUpdates();
+            sendWsUpdates(true);
         });
         
         // Obtenir une référence au serveur web
@@ -47,10 +47,7 @@ public:
     void poll() {
         unsigned long now = millis();
         if (now - _lastWsUpdate > WS_SEND_INTERVAL) {
-            if (detectChanges()) {
-                sendWsUpdates();
-                _lastWsUpdate = now;
-            }
+            if (sendWsUpdates(false)) _lastWsUpdate = now;
         }
     }
 
@@ -58,7 +55,7 @@ private:
     WiFiManager& _wifiManager;
     APIServer& _apiServer;
     unsigned long _lastWsUpdate;
-    StaticJsonDocument<1024> _previousState;
+    StaticJsonDocument<2048> _previousState;
 
     /**
      * @brief Enregistre toutes les routes API
@@ -109,16 +106,9 @@ private:
      * @brief Gère la requête GET pour obtenir le statut
      */
     void handleGetStatus(AsyncWebServerRequest* request) {
-        StaticJsonDocument<1024> doc;
+        StaticJsonDocument<2048> doc;
         JsonObject status = doc.to<JsonObject>();
-        
-        // Les statuts sont déjà rafraîchis par la boucle principale
-        JsonObject apStatus = status["ap"].to<JsonObject>();
-        _wifiManager.getAPStatus(apStatus);
-        
-        JsonObject staStatus = status["sta"].to<JsonObject>();
-        _wifiManager.getSTAStatus(staStatus);
-
+        _wifiManager.getStatusToJson(status);
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
@@ -128,16 +118,10 @@ private:
      * @brief Gère la requête GET pour obtenir la configuration
      */
     void handleGetConfig(AsyncWebServerRequest* request) {
-        StaticJsonDocument<1024> doc;
-        
+        StaticJsonDocument<2048> doc;
         doc["hostname"] = _wifiManager.getHostname();
-        
-        JsonObject apConfig = doc["ap"].to<JsonObject>();
-        _wifiManager.getAPConfig(apConfig);
-        
-        JsonObject staConfig = doc["sta"].to<JsonObject>();
-        _wifiManager.getSTAConfig(staConfig);
-
+        JsonObject config = doc["config"].to<JsonObject>();
+        _wifiManager.getConfigToJson(config);
         String response;
         serializeJson(doc, response);
         request->send(200, "application/json", response);
@@ -189,42 +173,35 @@ private:
     }
 
     /**
-     * @brief Détecte les changements d'état
-     * @return true si des changements sont détectés
-     */
-    bool detectChanges() {
-        StaticJsonDocument<1024> currentState;
-        
-        JsonObject apStatus = currentState["ap"].to<JsonObject>();
-        _wifiManager.getAPStatus(apStatus);
-        
-        JsonObject staStatus = currentState["sta"].to<JsonObject>();
-        _wifiManager.getSTAStatus(staStatus);
-
-        bool changed = (_previousState.isNull() || currentState != _previousState);
-        if (changed) {
-            _previousState = currentState;
-        }
-        return changed;
-    }
-
-    /**
      * @brief Envoie les mises à jour d'état via WebSocket
+     * 
+     * @param force Force l'envoi même si aucun changement n'est détecté
+     * @return true si des changements ont été envoyés
      */
-    void sendWsUpdates() {
-        StaticJsonDocument<1024> doc;
-        doc["type"] = "wifi_status";
-        
-        JsonObject data = doc["data"].to<JsonObject>();
-        JsonObject apStatus = data["ap"].to<JsonObject>();
-        _wifiManager.getAPStatus(apStatus);
-        
-        JsonObject staStatus = data["sta"].to<JsonObject>();
-        _wifiManager.getSTAStatus(staStatus);
+    bool sendWsUpdates(bool force = false) {
+        // Fetch the current status and config
+        StaticJsonDocument<2048> newState;
+        JsonObject newStatus = newState["status"].to<JsonObject>();
+        JsonObject newConfig = newState["config"].to<JsonObject>();
+        _wifiManager.getStatusToJson(newStatus);
+        _wifiManager.getConfigToJson(newConfig);
 
-        String message;
-        serializeJson(doc, message);
-        _apiServer.push(message);
+        // Check if there are changes (or force update)
+        bool changed = (force || _previousState.isNull() || newState != _previousState);
+        
+        if (changed) {
+            StaticJsonDocument<2048> sendDoc;
+            sendDoc["type"] = "wifi_manager";
+            JsonObject data = sendDoc["data"].to<JsonObject>();
+            data["status"] = newStatus;
+            data["config"] = newConfig;
+            String message;
+            serializeJson(sendDoc, message);
+            _apiServer.push(message);
+            _previousState = newState;
+            return true;    
+        }
+        return false;
     }
 };
 

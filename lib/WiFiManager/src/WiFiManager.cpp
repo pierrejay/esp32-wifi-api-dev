@@ -451,23 +451,25 @@
 
 
     //////////////////////
-    // DIRECT ACCESS
+    // GETTERS
     //////////////////////
 
-    void WiFiManager::getAPStatus(JsonObject& obj) const {
-        apStatus.toJson(obj);
+    void WiFiManager::getStatusToJson(JsonObject& obj) const {
+        StaticJsonDocument<1024> doc;
+        JsonObject apStatusObj = doc["ap"].to<JsonObject>();
+        apStatus.toJson(apStatusObj);
+        JsonObject staStatusObj = doc["sta"].to<JsonObject>();
+        staStatus.toJson(staStatusObj);
+        obj = doc.to<JsonObject>();
     }
 
-    void WiFiManager::getSTAStatus(JsonObject& obj) const {
-        staStatus.toJson(obj);
-    }
-
-    void WiFiManager::getAPConfig(JsonObject& obj) const {
-        apConfig.toJson(obj);
-    }
-
-    void WiFiManager::getSTAConfig(JsonObject& obj) const {
-        staConfig.toJson(obj);
+    void WiFiManager::getConfigToJson(JsonObject& obj) const {
+        StaticJsonDocument<1024> doc;
+        JsonObject apConfigObj = doc["ap"].to<JsonObject>();
+        apConfig.toJson(apConfigObj);
+        JsonObject staConfigObj = doc["sta"].to<JsonObject>();
+        staConfig.toJson(staConfigObj);
+        obj = doc.to<JsonObject>();
     }
 
     // Méthode pour enregistrer le callback
@@ -481,6 +483,7 @@
             _onStateChange();
         }
     }
+
 
     bool WiFiManager::begin() {
         // Initialisation SPIFFS déjà faite dans main.cpp

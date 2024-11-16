@@ -6,8 +6,8 @@
 #include <queue>
 #include <SPIFFS.h>
 
-#define WS_POLL_INTERVAL 50
-#define WS_QUEUE_SIZE 10
+constexpr unsigned long WS_POLL_INTERVAL = 50;
+constexpr unsigned long WS_QUEUE_SIZE = 10;
 
 class APIServer {
 public:

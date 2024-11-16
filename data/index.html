@@ -509,11 +509,34 @@
         function handleWebSocketMessage(event) {
             try {
                 const data = JSON.parse(event.data);
-                if (data.type === 'wifi_status') {
-                    updateConnectionStatus(data.data);
+                if (data.type === 'wifi_manager') {
+                    // Mise à jour du statut de connexion
+                    if (data.data.status) {
+                        updateConnectionStatus(data.data.status);
+                    }
+                    
+                    // Mise à jour de la configuration si présente
+                    if (data.data.config) {
+                        updateUI({
+                            hostname: data.data.config.hostname,
+                            ap: {
+                                ssid: data.data.config.ap.ssid,
+                                password: data.data.config.ap.password
+                            },
+                            sta: {
+                                ssid: data.data.config.sta.ssid,
+                                password: data.data.config.sta.password,
+                                dhcp: data.data.config.sta.dhcp,
+                                ip: data.data.config.sta.ip,
+                                gateway: data.data.config.sta.gateway,
+                                subnet: data.data.config.sta.subnet
+                            }
+                        });
+                    }
                 }
             } catch (error) {
                 console.error('Erreur lors du parsing du message WebSocket:', error);
+                console.error('Message reçu:', event.data);
             }
         }
 
@@ -737,6 +760,7 @@
             // Mise à jour du statut AP
             if (status.ap) {
                 const apStatus = !status.ap.enabled ? 'disabled' :
+                                (status.ap.busy && !status.ap.connected) ? 'connecting' :
                                 status.ap.connected ? 'connected' : 'disconnected';
                 
                 const apStatusElement = document.querySelector('.ap-status');
@@ -754,17 +778,18 @@
                     text.textContent = apStatus.charAt(0).toUpperCase() + apStatus.slice(1);
 
                     // Mise à jour de l'IP uniquement si connecté
-                    ip.textContent = (apStatus === 'connected' && status.ap.ip) ? status.ap.ip : '';
+                    ip.textContent = (status.ap.connected && status.ap.ip) ? status.ap.ip : '';
 
-                    // Gestion du loading
-                    loading.classList.toggle('hidden', !status.ap.connecting);
+                    // Gestion du loading basée sur busy
+                    loading.classList.toggle('hidden', !status.ap.busy);
                 }
             }
 
             // Mise à jour du statut STA
             if (status.sta) {
                 const staStatus = !status.sta.enabled ? 'disabled' :
-                                 status.sta.connected ? 'connected' : 'disconnected';
+                                (status.sta.busy && !status.sta.connected) ? 'connecting' :
+                                status.sta.connected ? 'connected' : 'disconnected';
                 
                 const staStatusElement = document.querySelector('.sta-status');
                 if (staStatusElement) {
@@ -782,11 +807,11 @@
                     text.textContent = staStatus.charAt(0).toUpperCase() + staStatus.slice(1);
 
                     // Mise à jour de l'IP et RSSI uniquement si connecté
-                    ip.textContent = (staStatus === 'connected' && status.sta.ip) ? status.sta.ip : '';
-                    rssi.textContent = (staStatus === 'connected' && status.sta.rssi) ? `${status.sta.rssi} dBm` : '';
+                    ip.textContent = (status.sta.connected && status.sta.ip) ? status.sta.ip : '';
+                    rssi.textContent = (status.sta.connected && status.sta.rssi) ? `${status.sta.rssi} dBm` : '';
 
-                    // Gestion du loading
-                    loading.classList.toggle('hidden', !status.sta.connecting);
+                    // Gestion du loading basée sur busy
+                    loading.classList.toggle('hidden', !status.sta.busy);
                 }
             }
         }

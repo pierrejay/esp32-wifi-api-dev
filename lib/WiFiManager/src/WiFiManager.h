@@ -48,6 +48,10 @@ public:
     bool setSTAConfigFromJson(const JsonObject& config);
     void getAvailableNetworks(JsonObject& obj);
 
+    // Getters for status and configuration
+    void getStatusToJson(JsonObject& obj) const;
+    void getConfigToJson(JsonObject& obj) const;
+
     // Hostname management
     bool setHostname(const String& name);
     String getHostname();
@@ -64,12 +68,6 @@ public:
 
     // Main loop method
     void poll();
-
-    // Direct object access methods
-    void getAPStatus(JsonObject& obj) const;
-    void getSTAStatus(JsonObject& obj) const;
-    void getAPConfig(JsonObject& obj) const;
-    void getSTAConfig(JsonObject& obj) const;
 
     // State change notification callback registration
     void onStateChange(std::function<void()> callback);
