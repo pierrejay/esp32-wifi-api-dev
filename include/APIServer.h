@@ -4,7 +4,7 @@
 #include <ESPAsyncWebServer.h>
 #include <AsyncWebSocket.h>
 #include <queue>
-#include <string>
+#include <SPIFFS.h>
 
 #define WS_POLL_INTERVAL 50
 #define WS_QUEUE_SIZE 10
@@ -23,10 +23,6 @@ public:
             request->send(404, "text/plain", "Page non trouvée");
         });
         _server.begin();
-    }
-
-    void textAll(const String& message) {
-        _ws.textAll(message);
     }
 
     void poll() {
@@ -55,6 +51,10 @@ private:
             textAll(_messageQueue.front());
             _messageQueue.pop();
         }
+    }
+
+    void textAll(const String& message) {
+        _ws.textAll(message);
     }
 };
 

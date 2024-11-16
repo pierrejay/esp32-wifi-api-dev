@@ -1,14 +1,6 @@
 #include <Arduino.h>
 #include <WiFiManager.h>
 
-// Définition des constantes
-const char* DEFAULT_AP_SSID = "ESP32-Access-Point";
-const char* DEFAULT_AP_PASSWORD = "12345678";
-const char* DEFAULT_HOSTNAME = "esp32";
-const char* CONFIG_FILE = "/wifi_config.json";
-const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
-
-
     //////////////////////
     // CLASS METHODS
     //////////////////////
@@ -34,127 +26,54 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         // Hostname par défaut
         hostname = DEFAULT_HOSTNAME;
 
-        applyAPConfig();
-        applySTAConfig();
+        if (!applyAPConfig(apConfig)) {
+            Serial.println("WIFIMANAGER: Erreur lors de l'application de la configuration AP par défaut");
+        }
+        if (!applySTAConfig(staConfig)) {
+            Serial.println("WIFIMANAGER: Erreur lors de l'application de la configuration STA par défaut");
+        }
+    }
+
+/* @brief Méthodes de gestion de la configuration AP */
+    /* @param const ConnectionConfig& config : Configuration à appliquer */
+    /* @return bool */
+    bool WiFiManager::setAPConfig(const ConnectionConfig& config) {
+        ConnectionConfig tempConfig = config;
+        // Valider et nettoyer la config puis l'appliquer
+        if (!validateAPConfig(tempConfig)) return false;
+        if (!applyAPConfig(tempConfig)) return false;
+        apConfig = tempConfig;
+        return true;
+    }
+
+    /* @brief Méthodes de gestion de la configuration STA */
+    /* @param const ConnectionConfig& config : Configuration à appliquer */
+    /* @return bool */
+    bool WiFiManager::setSTAConfig(const ConnectionConfig& config) {
+        // Valider et nettoyer la config puis l'appliquer
+        ConnectionConfig tempConfig = config;
+        if (!validateSTAConfig(tempConfig)) return false;
+        if (!applySTAConfig(tempConfig)) return false;
+        staConfig = tempConfig;
+        return true;
     }
 
     /* @brief Méthodes de gestion de la configuration AP */
     /* @param const JsonObject& config : Configuration à appliquer */
     /* @return bool */
-    bool WiFiManager::setAPConfig(const JsonObject& config) {
-        // Créer une copie temporaire de la configuration actuelle
-        ConnectionConfig tempConfig = apConfig;
-        
-        // Mise à jour des champs
-        if (config["enabled"].is<bool>())       tempConfig.enabled = config["enabled"];
-        if (config["ssid"].is<String>())        tempConfig.ssid = config["ssid"].as<String>();
-        if (config["password"].is<String>())    tempConfig.password = config["password"].as<String>();
-        
-        // Validation et mise à jour des paramètres réseau
-        if (config["ip"].is<String>()) {
-            String ipStr = config["ip"].as<String>();
-            if (!isValidIPv4(ipStr)) {
-                return false;
-            }
-            tempConfig.ip.fromString(ipStr);
-        }
-        
-        if (config["subnet"].is<String>()) {
-            String subnetStr = config["subnet"].as<String>();
-            if (!isValidSubnetMask(subnetStr)) {
-                return false;
-            }
-            tempConfig.subnet.fromString(subnetStr);
-        }
-        
-        // Mise à jour des paramètres AP spécifiques
-        if (config["channel"].is<int>()) {
-            int channel = config["channel"];
-            if (channel < 1 || channel > 13) {
-                return false;
-            }
-            tempConfig.channel = channel;
-        }
-        
-        if (config["maxConnections"].is<int>()) {
-            int maxConn = config["maxConnections"];
-            if (maxConn < 1 || maxConn > 8) {
-                return false;
-            }
-            tempConfig.maxConnections = maxConn;
-        }
-        
-        if (config["hideSSID"].is<bool>()) tempConfig.hideSSID = config["hideSSID"];
-        
-        // La gateway est toujours l'IP de l'AP
-        tempConfig.gateway = tempConfig.ip;
-        
-        // Si toutes les validations sont passées, on applique la nouvelle configuration
-        apConfig = tempConfig;
-        return applyAPConfig();
+    bool WiFiManager::setAPConfigFromJson(const JsonObject& config) {
+        ConnectionConfig tempConfig;
+        if (!tempConfig.fromJson(config)) return false;
+        return setAPConfig(tempConfig);
     }
 
     /* @brief Méthodes de gestion de la configuration STA */
     /* @param const JsonObject& config : Configuration à appliquer */
     /* @return bool */
-    bool WiFiManager::setSTAConfig(const JsonObject& config) {
-        // Créer une copie temporaire de la configuration actuelle
-        ConnectionConfig tempConfig = staConfig;
-        
-        // Mise à jour des champs de base
-        if (config["enabled"].is<bool>())    tempConfig.enabled = config["enabled"];
-        if (config["ssid"].is<String>())     tempConfig.ssid = config["ssid"].as<String>();
-        if (config["password"].is<String>()) tempConfig.password = config["password"].as<String>();
-
-        // Gestion du DHCP et des paramètres IP
-        if (config["dhcp"].is<bool>()) {
-            tempConfig.dhcp = config["dhcp"];
-            
-            if (tempConfig.dhcp) {
-                // Si DHCP activé, on efface les paramètres IP
-                tempConfig.ip = IPAddress(0, 0, 0, 0);
-                tempConfig.gateway = IPAddress(0, 0, 0, 0);
-                tempConfig.subnet = IPAddress(0, 0, 0, 0);
-            } else {
-                // DHCP désactivé, on vérifie les configurations IP
-                bool hasIP = config["ip"].is<String>();
-                bool hasGateway = config["gateway"].is<String>();
-                bool hasSubnet = config["subnet"].is<String>();
-                
-                // Validation de l'IP (obligatoire si DHCP off)
-                if (!hasIP || !isValidIPv4(config["ip"].as<String>())) {
-                    return false;
-                }
-
-                // Configuration avec IP seule
-                tempConfig.ip.fromString(config["ip"].as<String>());
-                
-                // Si gateway ou subnet est présent, les deux doivent être présents et valides
-                if (hasGateway || hasSubnet) {
-                    if (!(hasGateway && hasSubnet)) {
-                        return false;
-                    }
-                    
-                    String gatewayStr = config["gateway"].as<String>();
-                    String subnetStr = config["subnet"].as<String>();
-                    
-                    if (!isValidIPv4(gatewayStr) || !isValidSubnetMask(subnetStr)) {
-                        return false;
-                    }
-                    
-                    tempConfig.gateway.fromString(gatewayStr);
-                    tempConfig.subnet.fromString(subnetStr);
-                } else {
-                    // Si pas de gateway/subnet spécifiés, on met des valeurs par défaut
-                    tempConfig.gateway = IPAddress(0, 0, 0, 0);
-                    tempConfig.subnet = IPAddress(0, 0, 0, 0);
-                }
-            }
-        }
-        
-        // Si toutes les validations sont passées, on applique la nouvelle configuration
-        staConfig = tempConfig;
-        return applySTAConfig();
+    bool WiFiManager::setSTAConfigFromJson(const JsonObject& config) {
+        ConnectionConfig tempConfig;
+        if (!tempConfig.fromJson(config)) return false;
+        return setSTAConfig(tempConfig);
     }
 
     /* @brief Méthodes de scan des réseaux */
@@ -205,7 +124,7 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
     // Méthodes pour connecter/déconnecter
     bool WiFiManager::connectAP() {
         apConfig.enabled = true;
-        return applyAPConfig();
+        return applyAPConfig(apConfig);
     }
 
     bool WiFiManager::disconnectAP() {
@@ -216,7 +135,7 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
 
     bool WiFiManager::connectSTA() {
         staConfig.enabled = true;
-        return applySTAConfig();
+        return applySTAConfig(staConfig);
     }
 
     bool WiFiManager::disconnectSTA() {
@@ -225,28 +144,87 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         return true;
     }
 
+    bool WiFiManager::validateAPConfig(ConnectionConfig& config) {
+        // Validation du canal, SSID et password
+        if (config.channel < 1 || config.channel > 13) return false;
+        if (config.ssid.isEmpty()) return false;
+        if (config.password.isEmpty()) return false;
+
+        // Validation longueur SSID & password
+        if (config.ssid.length() > 32) return false;
+        if (config.password.length() < 8 || config.password.length() > 64) return false;
+
+        // On nettoie les items de config non applicables
+        config.dhcp = true;
+        if (config.gateway == IPAddress(0, 0, 0, 0)) config.gateway = config.ip;
+        config.subnet = IPAddress(255, 255, 255, 0);
+        
+        return true;
+    }
+
+    bool WiFiManager::validateSTAConfig(ConnectionConfig& config) {
+        // Validation du SSID
+        if (config.ssid.isEmpty()) return false;
+
+        // Validation longueur SSID & password
+        if (config.ssid.length() > 32) return false;
+        if (config.password.length() < 8 || config.password.length() > 64) return false;
+
+        // Gestion du DHCP et des paramètres IP STA
+        if (config.dhcp) {
+            // Si DHCP activé, on efface les paramètres IP
+            config.ip = IPAddress(0, 0, 0, 0);
+            config.gateway = IPAddress(0, 0, 0, 0);
+            config.subnet = IPAddress(0, 0, 0, 0);
+        } 
+        else {
+            // DHCP désactivé, on vérifie les configurations IP
+            bool hasIP = config.ip != IPAddress(0, 0, 0, 0);
+            bool hasGateway = config.gateway != IPAddress(0, 0, 0, 0);
+            bool hasSubnet = config.subnet != IPAddress(0, 0, 0, 0);
+            
+            // Validation de l'IP (obligatoire si DHCP off)
+            if (!hasIP) return false;
+            
+            // Si gateway ou subnet est présent, les deux doivent être présents et valides
+            if (hasGateway || hasSubnet) {
+                if (!(hasGateway && hasSubnet)) {
+                    return false;
+                }
+            } else {
+                // Si pas de gateway/subnet spécifiés, on met des valeurs par défaut
+                config.gateway = IPAddress(0, 0, 0, 0);
+                config.subnet = IPAddress(0, 0, 0, 0);
+            }
+        }
+        // On nettoie les items de config non applicables
+        config.channel = 0;
+        config.hideSSID = false;
+        return true;
+    }
+
     // Appliquer la configuration AP
-    bool WiFiManager::applyAPConfig() {
-        if (apConfig.enabled) {
+    bool WiFiManager::applyAPConfig(const ConnectionConfig& config) {
+        if (config.enabled) {
             Serial.println("WIFIMANAGER: Application de la configuration AP:");
-            Serial.printf("- SSID: %s\n", apConfig.ssid.c_str());
-            Serial.printf("- IP: %s\n", apConfig.ip.toString().c_str());
-            Serial.printf("- Canal: %d\n", apConfig.channel);
+            Serial.printf("- SSID: %s\n", config.ssid.c_str());
+            Serial.printf("- IP: %s\n", config.ip.toString().c_str());
+            Serial.printf("- Canal: %d\n", config.channel);
             
             WiFi.mode(staConfig.enabled ? WIFI_AP_STA : WIFI_AP);
             
             bool success = WiFi.softAP(
-                apConfig.ssid.c_str(),
-                apConfig.password.c_str(),
-                apConfig.channel
+                config.ssid.c_str(),
+                config.password.c_str(),
+                config.channel
             );
             
             if (!success) {
                 Serial.println("WIFIMANAGER: Échec de la configuration du point d'accès");
                 return false;
             }
-            
-            bool result = WiFi.softAPConfig(apConfig.ip, apConfig.gateway, apConfig.subnet);
+
+            bool result = WiFi.softAPConfig(config.ip, config.gateway, config.subnet);
             if (!result) {
                 Serial.println("WIFIMANAGER: Échec de la configuration IP du point d'accès");
             } else {
@@ -267,23 +245,23 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
 
     /* @brief Appliquer la configuration STA */
     /* @return bool */
-    bool WiFiManager::applySTAConfig() {
-        if (staConfig.enabled) {
+    bool WiFiManager::applySTAConfig(const ConnectionConfig& config) {
+        if (config.enabled) {
             Serial.println("WIFIMANAGER: Application de la configuration STA:");
-            Serial.printf("- SSID: %s\n", staConfig.ssid.c_str());
-            Serial.printf("- Mode DHCP: %s\n", staConfig.dhcp ? "Oui" : "Non");
+            Serial.printf("- SSID: %s\n", config.ssid.c_str());
+            Serial.printf("- Mode DHCP: %s\n", config.dhcp ? "Oui" : "Non");
             
             WiFi.mode(apConfig.enabled ? WIFI_AP_STA : WIFI_STA);
             
-            if (!staConfig.dhcp) {
+            if (!config.dhcp) {
                 Serial.println("WIFIMANAGER: Configuration IP statique:");
-                Serial.printf("- IP: %s\n", staConfig.ip.toString().c_str());
-                Serial.printf("- Gateway: %s\n", staConfig.gateway.toString().c_str());
-                Serial.printf("- Subnet: %s\n", staConfig.subnet.toString().c_str());
-                WiFi.config(staConfig.ip, staConfig.gateway, staConfig.subnet);
+                Serial.printf("- IP: %s\n", config.ip.toString().c_str());
+                Serial.printf("- Gateway: %s\n", config.gateway.toString().c_str());
+                Serial.printf("- Subnet: %s\n", config.subnet.toString().c_str());
+                WiFi.config(config.ip, config.gateway, config.subnet);
             }
             
-            WiFi.begin(staConfig.ssid.c_str(), staConfig.password.c_str());
+            WiFi.begin(config.ssid.c_str(), config.password.c_str());
             staStatus.enabled = true;
             staStatus.busy = true;
             staStatus.connectionStartTime = millis();
@@ -311,10 +289,10 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         doc["hostname"] = hostname;
         
         JsonObject apObj = doc["ap"].to<JsonObject>();
-        apConfig.toJSON(apObj);
+        apConfig.toJson(apObj);
         
         JsonObject staObj = doc["sta"].to<JsonObject>();
-        staConfig.toJSON(staObj);
+        staConfig.toJson(staObj);
         
         File file = SPIFFS.open(CONFIG_FILE, "w");
         if (!file) {
@@ -371,7 +349,7 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         if (doc["ap"].is<JsonObject>()) {
             Serial.println("WIFIMANAGER: Configuration AP trouvée:");
             JsonObject apJson = doc["ap"].as<JsonObject>();
-            setAPConfig(apJson);
+            setAPConfigFromJson(apJson);
             Serial.printf("- SSID: %s\n", apConfig.ssid.c_str());
             Serial.printf("- IP: %s\n", apConfig.ip.toString().c_str());
             Serial.printf("- Canal: %d\n", apConfig.channel);
@@ -381,7 +359,7 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         if (doc["sta"].is<JsonObject>()) {
             Serial.println("WIFIMANAGER: Configuration STA trouvée:");
             JsonObject staJson = doc["sta"].as<JsonObject>();
-            setSTAConfig(staJson);
+            setSTAConfigFromJson(staJson);
             Serial.printf("- SSID: %s\n", staConfig.ssid.c_str());
             Serial.printf("- Mode DHCP: %s\n", staConfig.dhcp ? "Oui" : "Non");
             if (!staConfig.dhcp) {
@@ -453,7 +431,7 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
         // Gestion du mode AP
         if (apConfig.enabled && !apStatus.enabled) {
             Serial.println("WIFIMANAGER: Redémarrage du point d'accès...");
-            applyAPConfig();
+            applyAPConfig(apConfig);
         }
         
         // Gestion du mDNS
@@ -477,79 +455,19 @@ const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
     //////////////////////
 
     void WiFiManager::getAPStatus(JsonObject& obj) const {
-        apStatus.toJSON(obj);
+        apStatus.toJson(obj);
     }
 
     void WiFiManager::getSTAStatus(JsonObject& obj) const {
-        staStatus.toJSON(obj);
+        staStatus.toJson(obj);
     }
 
     void WiFiManager::getAPConfig(JsonObject& obj) const {
-        apConfig.toJSON(obj);
+        apConfig.toJson(obj);
     }
 
     void WiFiManager::getSTAConfig(JsonObject& obj) const {
-        staConfig.toJSON(obj);
-    }
-
-
-    //////////////////////
-    // HELPERS
-    //////////////////////
-
-    /* @brief Vérifier si une chaîne est une adresse IPv4 valide */
-    /* @param const String& ip : Chaîne à vérifier */
-    /* @return bool */
-    bool WiFiManager::isValidIPv4(const String& ip) {
-        if (ip.isEmpty()) return false;
-        
-        int dots = 0;
-        int lastDot = -1;
-        
-        for (int i = 0; i < ip.length(); i++) {
-            if (ip[i] == '.') {
-                // Vérifier la longueur du segment
-                if (i - lastDot - 1 <= 0 || i - lastDot - 1 > 3) return false;
-                
-                // Vérifier la valeur du segment
-                String segment = ip.substring(lastDot + 1, i);
-                int value = segment.toInt();
-                if (value < 0 || value > 255) return false;
-                
-                // Vérifier les zéros en tête
-                if (segment.length() > 1 && segment[0] == '0') return false;
-                
-                dots++;
-                lastDot = i;
-            } else if (!isdigit(ip[i])) {
-                return false;
-            }
-        }
-        
-        // Vérifier le dernier segment
-        String lastSegment = ip.substring(lastDot + 1);
-        if (lastSegment.length() <= 0 || lastSegment.length() > 3) return false;
-        int lastValue = lastSegment.toInt();
-        if (lastValue < 0 || lastValue > 255) return false;
-        if (lastSegment.length() > 1 && lastSegment[0] == '0') return false;
-        
-        return dots == 3;
-    }
-
-    /* @brief Vérifier si une chaîne est un masque de sous-réseau valide */
-    /* @param const String& subnet : Chaîne à vérifier */
-    /* @return bool */
-    bool WiFiManager::isValidSubnetMask(const String& subnet) {
-        if (!isValidIPv4(subnet)) return false;
-        
-        // Convertir le masque en nombre 32 bits
-        IPAddress mask;
-        if (!mask.fromString(subnet)) return false;
-        uint32_t binary = mask[0] << 24 | mask[1] << 16 | mask[2] << 8 | mask[3];
-        
-        // Vérifier que c'est un masque valide (tous les 1 sont contigus)
-        uint32_t zeroes = ~binary + 1;
-        return (binary & (zeroes - 1)) == 0;
+        staConfig.toJson(obj);
     }
 
     // Méthode pour enregistrer le callback

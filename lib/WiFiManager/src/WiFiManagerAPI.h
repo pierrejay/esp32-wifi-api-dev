@@ -160,7 +160,7 @@ private:
      * @brief Gère la requête POST pour configurer le point d'accès
      */
     void handleSetAPConfig(AsyncWebServerRequest* request, const JsonObject& config) {
-        bool success = _wifiManager.setAPConfig(config);
+        bool success = _wifiManager.setAPConfigFromJson(config);
         String response = "{\"success\":" + String(success ? "true" : "false") + "}";
         request->send(200, "application/json", response);
     }
@@ -169,7 +169,7 @@ private:
      * @brief Gère la requête POST pour configurer le client WiFi
      */
     void handleSetSTAConfig(AsyncWebServerRequest* request, const JsonObject& config) {
-        bool success = _wifiManager.setSTAConfig(config);
+        bool success = _wifiManager.setSTAConfigFromJson(config);
         String response = "{\"success\":" + String(success ? "true" : "false") + "}";
         request->send(200, "application/json", response);
     }
