@@ -3,25 +3,86 @@
 
 #include <ESPAsyncWebServer.h>
 #include <AsyncWebSocket.h>
+#include <AsyncJson.h>
+#include <ArduinoJson.h>
 #include <queue>
+#include <map>
 #include <SPIFFS.h>
 
+// Paramètres WebSocket
 constexpr unsigned long WS_POLL_INTERVAL = 50;
 constexpr unsigned long WS_QUEUE_SIZE = 10;
 
+/**
+ * @brief Représente une méthode d'API générique (GET ou SET)
+ */
+struct RPCMethod {
+    using RPCHandler = std::function<bool(const JsonObject* args, JsonObject& response)>;
+    enum Type { GET, SET };
+    
+    Type type;
+    RPCHandler handler;
+    
+    bool isGet() const { return type == GET; }
+};
+
+/**
+ * @brief Serveur API générique
+ */
 class APIServer {
 public:
     APIServer(uint16_t port = 80) : _server(port), _ws("/ws"), _lastUpdate(0) {
+        _queueMutex = xSemaphoreCreateMutex();
         _server.addHandler(&_ws);
     }
     
-    AsyncWebServer& server() { return _server; }
+    ~APIServer() {
+        if (_queueMutex != NULL) {
+            vSemaphoreDelete(_queueMutex);
+        }
+    }
     
+    // Helper pour créer une méthode GET
+    void addGetMethod(const String& resource, const String& method, 
+                     const RPCMethod::RPCHandler& handler) {
+        String path = buildPath(resource, method);
+        _methods.emplace(path, RPCMethod{RPCMethod::GET, handler});
+    }
+    
+    // Helper pour créer une méthode SET
+    void addSetMethod(const String& resource, const String& method, 
+                     const RPCMethod::RPCHandler& handler) {
+        String path = buildPath(resource, method);
+        _methods.emplace(path, RPCMethod{RPCMethod::SET, handler}); 
+    }
+
     void begin() {
+        // Enregistrer toutes les routes HTTP
+        for (const auto& method : _methods) {
+            if (method.second.isGet()) {
+                _server.on(method.first.c_str(), HTTP_GET, [this, &method](AsyncWebServerRequest *request) {
+                    handleGetRequest(request, method.second);
+                });
+            } else {
+                auto handler = std::unique_ptr<AsyncCallbackJsonWebHandler>(
+                    new AsyncCallbackJsonWebHandler(
+                        method.first.c_str(),
+                        [this, &method](AsyncWebServerRequest* request, JsonVariant& json) {
+                            handleSetRequest(request, method.second, json.as<JsonObject>()); // We don't need to check if json is nullptr since AsyncCallbackJsonWebHandler already checks for it
+                        }
+                    )
+                );
+                _server.addHandler(handler.release());
+            }
+        }
+
+        // Servir les fichiers statiques (index.html, etc.)
         _server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
         _server.onNotFound([](AsyncWebServerRequest *request){
             request->send(404, "text/plain", "Page non trouvée");
         });
+
+        // Démarrer le serveur HTTP
         _server.begin();
     }
 
@@ -34,10 +95,13 @@ public:
     }
 
     void push(const String& message) {
-        if (_messageQueue.size() >= WS_QUEUE_SIZE) {
-            _messageQueue.pop();
+        if (xSemaphoreTake(_queueMutex, portMAX_DELAY) == pdTRUE) {
+            if (_messageQueue.size() >= WS_QUEUE_SIZE) {
+                _messageQueue.pop();
+            }
+            _messageQueue.push(message);
+            xSemaphoreGive(_queueMutex);
         }
-        _messageQueue.push(message);
     }
 
 private:
@@ -45,11 +109,58 @@ private:
     AsyncWebSocket _ws;
     unsigned long _lastUpdate;
     std::queue<String> _messageQueue;
+    std::map<String, RPCMethod> _methods;
+    SemaphoreHandle_t _queueMutex;
+
+    String buildPath(const String& resource, const String& method) {
+        return "/api/" + resource + "/" + method;
+    }
+
+    void handleGetRequest(AsyncWebServerRequest* request, const RPCMethod& method) {
+        StaticJsonDocument<2048> doc;
+        JsonObject response = doc.to<JsonObject>();
+        
+        bool success = method.handler(nullptr, response);
+        if (!success) {
+            request->send(400, "application/json", "{\"success\": false}");
+            return;
+        }
+        
+        String responseStr;
+        serializeJson(doc, responseStr);
+        request->send(200, "application/json", responseStr);
+    }
+
+    void handleSetRequest(AsyncWebServerRequest* request, const RPCMethod& method, 
+                         const JsonObject& args) {
+        StaticJsonDocument<2048> doc;
+        JsonObject response = doc.to<JsonObject>();
+        
+        bool success = method.handler(&args, response); 
+        if (!success) {
+            request->send(400, "application/json", "{\"success\": false}");
+            return;
+        }
+        
+        String responseStr;
+        serializeJson(doc, responseStr);
+        request->send(200, "application/json", responseStr);
+    }
 
     void processWsQueue() {
-        while (!_messageQueue.empty()) {
-            textAll(_messageQueue.front());
-            _messageQueue.pop();
+        if (xSemaphoreTake(_queueMutex, portMAX_DELAY) == pdTRUE) {
+            while (!_messageQueue.empty()) {
+                String message = _messageQueue.front();
+                _messageQueue.pop();
+                xSemaphoreGive(_queueMutex);
+                
+                textAll(message);
+                
+                if (!xSemaphoreTake(_queueMutex, portMAX_DELAY)) {
+                    break;
+                }
+            }
+            xSemaphoreGive(_queueMutex);
         }
     }
 

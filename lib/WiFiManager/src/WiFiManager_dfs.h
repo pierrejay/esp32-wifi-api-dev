@@ -140,7 +140,10 @@ struct ConnectionConfig {
         }
     }
 
-    // Méthode pour désérialiser la config depuis un JSON
+    // Méthode pour désérialiser la config depuis un JSON. Evite de répéter les vérifications pour AP et STA
+    // Note : Nous ne vérifions pas si les champs obligatoires sont présents dans le JSON ou si les paramètres
+    // sont valides, cela est fait dans la méthode setAPConfigFromJson et setSTAConfigFromJson (logique métier). 
+    // Seuls les types des champs du JSON sont vérifiés ici.
     bool fromJson(const JsonObject& config) {
         // Créer une copie temporaire pour validation
         ConnectionConfig temp = *this;
