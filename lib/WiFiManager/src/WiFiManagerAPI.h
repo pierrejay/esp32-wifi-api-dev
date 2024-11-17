@@ -6,7 +6,7 @@
 #include <ArduinoJson.h>
 #include "WiFiManager.h"
 
-constexpr unsigned long WS_SEND_INTERVAL = 500; // Intervalle minimum entre les mises à jour WebSocket en millisecondes
+constexpr unsigned long NOTIFICATION_INTERVAL = 500; // Intervalle minimum entre les mises à jour WebSocket en millisecondes
 
 /**
  * @brief Classe API pour le gestionnaire WiFi
@@ -24,11 +24,11 @@ public:
      * @param apiServer Référence vers le serveur API pour la gestion WebSocket
      */
     WiFiManagerAPI(WiFiManager& wifiManager, APIServer& apiServer) 
-        : _wifiManager(wifiManager), _apiServer(apiServer), _lastWsUpdate(0) {
+        : _wifiManager(wifiManager), _apiServer(apiServer), _lastNotification(0) {
         
         // S'abonner aux changements d'état
         _wifiManager.onStateChange([this]() {
-            sendWsUpdates(true);
+            sendNotification(true);
         });
         
         registerMethods();
@@ -43,15 +43,15 @@ public:
      */
     void poll() {
         unsigned long now = millis();
-        if (now - _lastWsUpdate > WS_SEND_INTERVAL) {
-            if (sendWsUpdates(false)) _lastWsUpdate = now;
+        if (now - _lastNotification > NOTIFICATION_INTERVAL) {
+            if (sendNotification(false)) _lastNotification = now;
         }
     }
 
 private:
     WiFiManager& _wifiManager;
     APIServer& _apiServer;
-    unsigned long _lastWsUpdate;
+    unsigned long _lastNotification;
     StaticJsonDocument<2048> _previousState;
 
     /**
@@ -60,7 +60,7 @@ private:
      * @param force Force l'envoi même si aucun changement n'est détecté
      * @return true si des changements ont été envoyés
      */
-    bool sendWsUpdates(bool force = false) {
+    bool sendNotification(bool force = false) {
         // Fetch the current status and config
         StaticJsonDocument<2048> newState;
         JsonObject newStatus = newState["status"].to<JsonObject>();

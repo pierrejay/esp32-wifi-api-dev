@@ -89,7 +89,7 @@ public:
     void poll() {
         unsigned long now = millis();
         if (now - _lastUpdate > WS_POLL_INTERVAL) {
-            processWsQueue();
+            processNotificationQueue();
             _lastUpdate = now;
         }
     }
@@ -147,7 +147,7 @@ private:
         request->send(200, "application/json", responseStr);
     }
 
-    void processWsQueue() {
+    void processNotificationQueue() {
         if (xSemaphoreTake(_queueMutex, portMAX_DELAY) == pdTRUE) {
             while (!_messageQueue.empty()) {
                 String message = _messageQueue.front();
