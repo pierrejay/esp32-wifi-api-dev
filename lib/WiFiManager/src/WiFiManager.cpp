@@ -34,23 +34,43 @@
         }
     }
 
-/* @brief Méthodes de gestion de la configuration AP */
-    /* @param const ConnectionConfig& config : Configuration à appliquer */
+
+
+    /* @brief Initialize the WiFiManager */
+    /* @return bool */
+    bool WiFiManager::begin() {
+        // Initialisation SPIFFS déjà faite dans main.cpp
+        initDefaultConfig();
+
+        // if (!loadConfig()) {
+        //     Serial.println("WIFIMANAGER: Erreur de chargement de la configuration, utilisation des valeurs par défaut");
+        // }
+        
+        if (!saveConfig()) {
+            Serial.println("WIFIMANAGER: Erreur de sauvegarde de la configuration");
+            return false;
+        }
+
+        return true;
+    }
+
+    /* @brief Manage AP configuration */
+    /* @param const ConnectionConfig& config : Configuration to apply */
     /* @return bool */
     bool WiFiManager::setAPConfig(const ConnectionConfig& config) {
         ConnectionConfig tempConfig = config;
-        // Valider et nettoyer la config puis l'appliquer
+        // Validate and clean the config then apply it
         if (!validateAPConfig(tempConfig)) return false;
         if (!applyAPConfig(tempConfig)) return false;
         apConfig = tempConfig;
         return true;
     }
 
-    /* @brief Méthodes de gestion de la configuration STA */
-    /* @param const ConnectionConfig& config : Configuration à appliquer */
+    /* @brief Manage STA configuration */
+    /* @param const ConnectionConfig& config : Configuration to apply */
     /* @return bool */
     bool WiFiManager::setSTAConfig(const ConnectionConfig& config) {
-        // Valider et nettoyer la config puis l'appliquer
+        // Validate and clean the config then apply it
         ConnectionConfig tempConfig = config;
         if (!validateSTAConfig(tempConfig)) return false;
         if (!applySTAConfig(tempConfig)) return false;
@@ -67,8 +87,8 @@
         return setAPConfig(tempConfig);
     }
 
-    /* @brief Méthodes de gestion de la configuration STA */
-    /* @param const JsonObject& config : Configuration à appliquer */
+    /* @brief Manage STA configuration */
+    /* @param const JsonObject& config : Configuration to apply */
     /* @return bool */
     bool WiFiManager::setSTAConfigFromJson(const JsonObject& config) {
         ConnectionConfig tempConfig;
@@ -76,8 +96,8 @@
         return setSTAConfig(tempConfig);
     }
 
-    /* @brief Méthodes de scan des réseaux */
-    /* @param JsonObject& obj : Objet JSON pour stocker les résultats */
+    /* @brief Scan available networks */
+    /* @param JsonObject& obj : JSON object to store the results */
     /* @return void */
     void WiFiManager::getAvailableNetworks(JsonObject& obj) {
         int n = WiFi.scanNetworks();
@@ -96,17 +116,22 @@
         obj = doc.to<JsonObject>();
     }
 
-    // Gestion du hostname
+    /* @brief Set the hostname */
+    /* @param const String& name : Hostname to set */
+    /* @return bool */
     bool WiFiManager::setHostname(const String& name) {
         hostname = name;
         return MDNS.begin(hostname.c_str());
     }
 
+    /* @brief Get the hostname */
+    /* @return String */
     String WiFiManager::getHostname() {
         return hostname;
     }
 
-    // Obtenir l'état de connexion
+    /* @brief Refresh AP status */
+    /* @return void */
     void WiFiManager::refreshAPStatus() {
         apStatus.connected = WiFi.softAPgetStationNum() > 0;
         apStatus.clients = WiFi.softAPgetStationNum();
@@ -114,6 +139,8 @@
         apStatus.rssi = 0; // Non applicable pour AP
     }
 
+    /* @brief Refresh STA status */
+    /* @return void */
     void WiFiManager::refreshSTAStatus() {
         staStatus.connected = WiFi.status() == WL_CONNECTED;
         staStatus.clients = 0; // Non applicable pour STA
@@ -121,29 +148,39 @@
         staStatus.rssi = WiFi.RSSI();
     }
 
-    // Méthodes pour connecter/déconnecter
+    /* @brief Connect AP */
+    /* @return bool */
     bool WiFiManager::connectAP() {
         apConfig.enabled = true;
         return applyAPConfig(apConfig);
     }
 
+    /* @brief Disconnect AP */
+    /* @return bool */
     bool WiFiManager::disconnectAP() {
         apConfig.enabled = false;
         WiFi.softAPdisconnect(true);
         return true;
     }
 
+    /* @brief Connect STA */
+    /* @return bool */
     bool WiFiManager::connectSTA() {
         staConfig.enabled = true;
         return applySTAConfig(staConfig);
     }
 
+    /* @brief Disconnect STA */
+    /* @return bool */
     bool WiFiManager::disconnectSTA() {
         staConfig.enabled = false;
         WiFi.disconnect(true);
         return true;
     }
 
+    /* @brief Validate AP configuration */
+    /* @param ConnectionConfig& config : Configuration to validate */
+    /* @return bool */
     bool WiFiManager::validateAPConfig(ConnectionConfig& config) {
         // Validation du canal, SSID et password
         if (config.channel < 1 || config.channel > 13) return false;
@@ -162,6 +199,9 @@
         return true;
     }
 
+    /* @brief Validate STA configuration */
+    /* @param ConnectionConfig& config : Configuration to validate */
+    /* @return bool */
     bool WiFiManager::validateSTAConfig(ConnectionConfig& config) {
         // Validation du SSID
         if (config.ssid.isEmpty()) return false;
@@ -203,7 +243,9 @@
         return true;
     }
 
-    // Appliquer la configuration AP
+    /* @brief Apply AP configuration */
+    /* @param const ConnectionConfig& config : Configuration to apply */
+    /* @return bool */
     bool WiFiManager::applyAPConfig(const ConnectionConfig& config) {
         if (config.enabled) {
             Serial.println("WIFIMANAGER: Application de la configuration AP:");
@@ -243,7 +285,8 @@
         return true;
     }
 
-    /* @brief Appliquer la configuration STA */
+    /* @brief Apply STA configuration */
+    /* @param const ConnectionConfig& config : Configuration to apply */
     /* @return bool */
     bool WiFiManager::applySTAConfig(const ConnectionConfig& config) {
         if (config.enabled) {
@@ -264,7 +307,6 @@
             WiFi.begin(config.ssid.c_str(), config.password.c_str());
             staStatus.enabled = true;
             staStatus.busy = true;
-            staStatus.connectionStartTime = millis();
             
             Serial.println("WIFIMANAGER: Tentative de connexion au réseau WiFi...");
             notifyStateChange();
@@ -279,7 +321,7 @@
         return true;
     }
 
-    /* @brief Sauvegarder la configuration */
+    /* @brief Save configuration to Flash */
     /* @return bool */
     bool WiFiManager::saveConfig() {
         Serial.println("WIFIMANAGER: Sauvegarde de la configuration...");
@@ -311,7 +353,7 @@
         return true;
     }
 
-    /* @brief Charger la configuration */
+    /* @brief Load configuration from Flash */
     /* @return bool */
     bool WiFiManager::loadConfig() {
         Serial.println("WIFIMANAGER: Chargement de la configuration...");
@@ -370,27 +412,25 @@
         return true;
     }
 
-    /* @brief Vérifier périodiquement l'état */
+    /* @brief Periodically check the state */
     /* @return void */
     void WiFiManager::poll() {
-        static unsigned long lastCheck = 0;
-        const unsigned long interval = 5000; // Vérifier toutes les 5 secondes
         
         unsigned long now = millis();
-        if (now - lastCheck >= interval) {
-            lastCheck = now;
+        if (now - lastConnectionCheck >= POLL_INTERVAL) {
+            lastConnectionCheck = now;
             
-            // Rafraîchir les statuts
+            // Refresh status
             refreshAPStatus();
             refreshSTAStatus();
             
-            // Gérer les reconnexions si nécessaire
+            // Handle reconnections if necessary
             handleReconnections();
             
         }
     }
 
-    /* @brief Gérer les reconnexions */
+    /* @brief Handle reconnections */
     /* @return void */
     void WiFiManager::handleReconnections() {
         unsigned long currentTime = millis();
@@ -405,25 +445,25 @@
                     Serial.printf("- SSID: %s\n", WiFi.SSID().c_str());
                     Serial.printf("- IP: %s\n", WiFi.localIP().toString().c_str());
                     Serial.printf("- Force du signal: %d dBm\n", WiFi.RSSI());
+                    refreshSTAStatus();
+                    notifyStateChange();
                 } 
-                else if (currentTime - staStatus.connectionStartTime >= CONNECTION_TIMEOUT) {
+                else if (currentTime - lastSTAConnectionAttempt >= CONNECTION_TIMEOUT) {
                     staStatus.busy = false;
                     staStatus.connected = false;
                     Serial.println("WIFIMANAGER: Timeout de connexion WiFi");
                     WiFi.disconnect(true);
+                    refreshSTAStatus();
+                    notifyStateChange();
                 }
             }
             else if (!staStatus.connected) {
-                static unsigned long lastSTARetry = 0;
-                
                 if (currentTime - lastSTARetry >= RETRY_INTERVAL) {
                     Serial.println("WIFIMANAGER: Nouvelle tentative de connexion WiFi...");
                     lastSTARetry = currentTime;
                     
                     WiFi.disconnect(true);
-                    WiFi.begin(staConfig.ssid.c_str(), staConfig.password.c_str());
-                    staStatus.busy = true;
-                    staStatus.connectionStartTime = currentTime;
+                    applySTAConfig(staConfig);
                 }
             }
         }
@@ -441,7 +481,7 @@
         }
     }
 
-    /* @brief Destructeur */
+    /* @brief Destructor */
     /* @return void */
     WiFiManager::~WiFiManager() {
         // Déconnexion propre
@@ -449,11 +489,13 @@
         WiFi.softAPdisconnect(true);
     }
 
+/******************************************************************************/
+/*********************************** Getters **********************************/
+/******************************************************************************/
 
-    //////////////////////
-    // GETTERS
-    //////////////////////
-
+    /* @brief Get status to JSON */
+    /* @param JsonObject& obj : JSON object to store the results */
+    /* @return void */
     void WiFiManager::getStatusToJson(JsonObject& obj) const {
         StaticJsonDocument<1024> doc;
         JsonObject apStatusObj = doc["ap"].to<JsonObject>();
@@ -463,6 +505,9 @@
         obj = doc.to<JsonObject>();
     }
 
+    /* @brief Get configuration to JSON */
+    /* @param JsonObject& obj : JSON object to store the results */
+    /* @return void */
     void WiFiManager::getConfigToJson(JsonObject& obj) const {
         StaticJsonDocument<1024> doc;
         JsonObject apConfigObj = doc["ap"].to<JsonObject>();
@@ -472,31 +517,17 @@
         obj = doc.to<JsonObject>();
     }
 
-    // Méthode pour enregistrer le callback
+    /* @brief Register the callback */
+    /* @param std::function<void()> callback : Callback function */
+    /* @return void */
     void WiFiManager::onStateChange(std::function<void()> callback) {
         _onStateChange = callback;
     }
 
-    // Méthode utilitaire pour notifier les changements
+    /* @brief Notify state changes */
+    /* @return void */
     void WiFiManager::notifyStateChange() {
         if (_onStateChange) {
             _onStateChange();
         }
-    }
-
-
-    bool WiFiManager::begin() {
-        // Initialisation SPIFFS déjà faite dans main.cpp
-        initDefaultConfig();
-
-        // if (!loadConfig()) {
-        //     Serial.println("WIFIMANAGER: Erreur de chargement de la configuration, utilisation des valeurs par défaut");
-        // }
-        
-        if (!saveConfig()) {
-            Serial.println("WIFIMANAGER: Erreur de sauvegarde de la configuration");
-            return false;
-        }
-
-        return true;
     }

@@ -6,8 +6,6 @@
 #include <ArduinoJson.h>
 #include "WiFiManager.h"
 
-constexpr unsigned long NOTIFICATION_INTERVAL = 500; // Intervalle minimum entre les mises à jour WebSocket en millisecondes
-
 /**
  * @brief Classe API pour le gestionnaire WiFi
  * 
@@ -53,6 +51,7 @@ private:
     APIServer& _apiServer;
     unsigned long _lastNotification;
     StaticJsonDocument<2048> _previousState;
+    static constexpr unsigned long NOTIFICATION_INTERVAL = 500; // Intervalle minimum entre les mises à jour WebSocket en millisecondes
 
     /**
      * @brief Envoie les mises à jour d'état via WebSocket

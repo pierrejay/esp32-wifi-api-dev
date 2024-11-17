@@ -19,8 +19,12 @@ private:
     StaticJsonDocument<256> _lastStatus;
     std::function<void()> _onStateChange;
 
-    static const unsigned long CONNECTION_TIMEOUT = 30000;  // 30 secondes timeout
-    static const unsigned long RETRY_INTERVAL = 30000;      // 30 secondes entre les tentatives
+    static constexpr unsigned long POLL_INTERVAL = 2000; // 2 seconds
+    static constexpr unsigned long CONNECTION_TIMEOUT = 30000;  // 30 seconds timeout
+    static constexpr unsigned long RETRY_INTERVAL = 30000;      // 30 seconds between retries
+    unsigned long lastConnectionCheck = 0;
+    unsigned long lastSTARetry = 0;
+    unsigned long lastSTAConnectionAttempt = 0;
 
     void initDefaultConfig();
 

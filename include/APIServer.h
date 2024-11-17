@@ -9,10 +9,6 @@
 #include <map>
 #include <SPIFFS.h>
 
-// Paramètres WebSocket
-constexpr unsigned long WS_POLL_INTERVAL = 50;
-constexpr unsigned long WS_QUEUE_SIZE = 10;
-
 /**
  * @brief Représente une méthode d'API générique (GET ou SET)
  */
@@ -57,6 +53,22 @@ public:
     }
 
     void begin() {
+        // Ajouter la route pour lister les méthodes disponibles
+        _server.on("/api", HTTP_GET, [this](AsyncWebServerRequest *request) {
+            StaticJsonDocument<2048> doc;
+            JsonArray methods = doc.to<JsonArray>();
+            
+            for (const auto& method : _methods) {
+                JsonObject methodObj = methods.createNestedObject();
+                methodObj["path"] = method.first;
+                methodObj["type"] = method.second.isGet() ? "GET" : "SET";
+            }
+            
+            String response;
+            serializeJson(doc, response);
+            request->send(200, "application/json", response);
+        });
+
         // Enregistrer toutes les routes HTTP
         for (const auto& method : _methods) {
             if (method.second.isGet()) {
@@ -111,6 +123,8 @@ private:
     std::queue<String> _messageQueue;
     std::map<String, RPCMethod> _methods;
     SemaphoreHandle_t _queueMutex;
+    static constexpr unsigned long WS_POLL_INTERVAL = 50;
+    static constexpr unsigned long WS_QUEUE_SIZE = 10;
 
     String buildPath(const String& resource, const String& method) {
         return "/api/" + resource + "/" + method;
