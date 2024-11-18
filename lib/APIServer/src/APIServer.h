@@ -8,26 +8,32 @@
 #include <memory>
 #include "APIEndpoint.h"
 
-// Forward declarations
+// Forward declarations of API endpoints implementations
 class WebAPIEndpoint;
 
+/**
+ * @brief Type of API methods: GET, SET, EVT (event)
+ */
 enum class APIMethodType {
     GET,
     SET,
     EVT
 };
 
+/**
+ * @brief Parameters of an API method (request or response)
+ */
 struct APIParam {
     String name;
-    String type;     // "bool", "int", "float", "string", "obj"
-    bool required = true;  // Par défaut à true
-    std::vector<APIParam> properties;  // Pour les objets imbriqués
+    String type;                        // "bool", "int", "float", "string", "object"...
+    bool required = true;               // Default to true (can be dismissed in constructor)
+    std::vector<APIParam> properties;   // Stores nested objects (recursive)
 
-    // Constructeur pour faciliter l'initialisation
+    // Constructor to ease initialization
     APIParam(const String& n, const String& t, bool r = true) 
         : name(n), type(t), required(r) {}
 
-    // Nouveau constructeur pour les objets imbriqués
+    // Overloaded constructor for recursive nested objects
     APIParam(const String& n, const std::initializer_list<APIParam>& props, bool r = true)
         : name(n), type("obj"), required(r), properties(props) {}
 };
@@ -42,15 +48,21 @@ struct APIMethod {
     std::vector<APIParam> responseParams;
 };
 
+/**
+ * @brief Builder of an APIMethod.
+ * @brief APIMethods are registered in the APIServer and can be used by endpoints.
+ * @brief Setting properties allows automatic discovery of the API by clients & data validation.
+ * @brief All APIMethods declaration are done at compile-time & checked by the compiler.
+ */
 class APIMethodBuilder {
 public:
-    // Constructeur normal pour GET/SET
+    // Normal constructor for GET/SET
     APIMethodBuilder(APIMethodType type, APIMethod::Handler handler) {
         _method.type = type;
         _method.handler = handler;
     }
     
-    // Constructeur surchargé pour EVT (pas besoin de handler)
+    // Overloaded constructor for EVT (no need for handler)
     APIMethodBuilder(APIMethodType type) {
         if (type != APIMethodType::EVT) {
             return;
@@ -59,37 +71,43 @@ public:
         _method.handler = [](const JsonObject*, JsonObject&) { return true; }; // Dummy handler for EVT
     }
     
+    // Set the description of the method
     APIMethodBuilder& desc(const String& description) {
         _method.description = description;
         return *this;
     }
     
+    // Add a simple parameter to the method
     APIMethodBuilder& param(const String& name, const String& type, bool required = true) {
         _method.requestParams.push_back(APIParam(name, type, required));
         return *this;
     }
     
+    // Overloaded param constructor for nested objects
     APIMethodBuilder& param(const String& name, const std::initializer_list<APIParam>& props, bool required = true) {
         _method.requestParams.push_back(APIParam(name, props, required));
         return *this;
     }
     
+    // Add a simple response parameter to the method
     APIMethodBuilder& response(const String& name, const String& type, bool required = true) {
         _method.responseParams.push_back(APIParam(name, type, required));
         return *this;
     }
     
+    // Overloaded response constructor for nested objects
     APIMethodBuilder& response(const String& name, const std::initializer_list<APIParam>& props, bool required = true) {
         _method.responseParams.push_back(APIParam(name, props, required));
         return *this;
     }
 
-    
+    // Eventually, build the method
     APIMethod build() {
         return _method;
     }
 
 private:
+    // Stores the method during construction
     APIMethod _method;
 };
 
@@ -167,13 +185,14 @@ public:
         StaticJsonDocument<2048> doc;
         JsonArray methods = doc.to<JsonArray>();
         
+        // Recursive function to add object parameters in the JSON document
         std::function<void(JsonObject&, const APIParam&)> addObjectParams = 
             [&addObjectParams](JsonObject& obj, const APIParam& param) {
                 if (param.type == "obj" && !param.properties.empty()) {
                     JsonObject nested = obj.createNestedObject(param.name);
                     for (const auto& prop : param.properties) {
                         if (prop.type == "obj") {
-                            addObjectParams(nested, prop);  // Maintenant OK
+                            addObjectParams(nested, prop);
                         } else {
                             nested[prop.name] = prop.required ? prop.type : prop.type + "*";
                         }
@@ -241,14 +260,14 @@ public:
      */
     bool validateParams(const APIMethod& method, const JsonObject* args) {
         if (!args && !method.requestParams.empty()) {
-            return false;  // Pas d'arguments alors qu'on en attend
+            return false;  // No arguments while expected
         }
         if (args) {
             for (const auto& param : method.requestParams) {
                 if (param.required && !args->containsKey(param.name)) {
-                    return false;  // Paramètre requis manquant
+                    return false;  // Missing required parameter
                 }
-                // On ne vérifie pas la structure interne des objets
+                // We don't check the internal structure of objects
             }
         }
         return true;

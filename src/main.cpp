@@ -6,10 +6,10 @@
 #include "WebAPIEndpoint.h"
 
 // Declaration of global objects
-WiFiManager wifiManager;  
-APIServer apiServer;
-WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
-WebAPIEndpoint webServer(apiServer, 80);  // Create webserver on the stack
+WiFiManager wifiManager;                                    // WiFiManager instance
+APIServer apiServer;                                        // Master API server
+WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);      // WiFiManager API interface
+WebAPIEndpoint webServer(apiServer, 80);                    // Web server endpoint (HTTP+WS)
 
 void setup() {
     Serial.begin(115200);

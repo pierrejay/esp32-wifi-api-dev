@@ -17,20 +17,16 @@ public:
         , _ws("/ws")
         , _lastUpdate(0) 
     {
-        // Déclarer les protocoles supportés
+        // Declare supported protocols
         addProtocol("http", GET | SET);
         addProtocol("websocket", EVT);
         
-        _queueMutex = xSemaphoreCreateMutex();
         _server.addHandler(&_ws);
         
         setupWebSocketEvents();
     }
     
     ~WebAPIEndpoint() {
-        if (_queueMutex != NULL) {
-            vSemaphoreDelete(_queueMutex);
-        }
     }
 
     void begin() override {
@@ -66,13 +62,10 @@ public:
         String message;
         serializeJson(doc, message);
         
-        if (xSemaphoreTake(_queueMutex, portMAX_DELAY) == pdTRUE) {
-            if (_wsQueue.size() >= WS_QUEUE_SIZE) {
-                _wsQueue.pop();
-            }
-            _wsQueue.push(message);
-            xSemaphoreGive(_queueMutex);
+        if (_wsQueue.size() >= WS_QUEUE_SIZE) {
+            _wsQueue.pop();
         }
+        _wsQueue.push(message);
     }
 
 private:
@@ -80,11 +73,17 @@ private:
     AsyncWebSocket _ws;
     unsigned long _lastUpdate;
     std::queue<String> _wsQueue;
-    SemaphoreHandle_t _queueMutex;
     
     static constexpr unsigned long WS_POLL_INTERVAL = 50;
     static constexpr size_t WS_QUEUE_SIZE = 10;
-    static constexpr bool WS_API_ENABLED = false;  // Désactive explicitement les appels API sur WebSocket
+    static constexpr bool WS_API_ENABLED = false;
+
+    // Constantes pour les routes et types MIME
+    static constexpr const char* API_ROUTE = "/api";
+    static constexpr const char* MIME_JSON = "application/json";
+    static constexpr const char* MIME_TEXT = "text/plain";
+    static constexpr const char* ERROR_BAD_REQUEST = "{\"error\":\"Bad Request\"}";
+    static constexpr const char* ERROR_NOT_FOUND = "Not Found";
 
     void setupWebSocketEvents() {
         _ws.onEvent([this](AsyncWebSocket* server, AsyncWebSocketClient* client, 
@@ -96,12 +95,11 @@ private:
     }
 
     void setupAPIRoutes() {
-        // Route pour la documentation API
-        _server.on("/api", HTTP_GET, [this](AsyncWebServerRequest *request) {
+        _server.on(API_ROUTE, HTTP_GET, [this](AsyncWebServerRequest *request) {
             auto methods = _apiServer.getAPIDoc();
             String response;
             serializeJson(methods, response);
-            request->send(200, "application/json", response);
+            request->send(200, MIME_JSON, response);
         });
 
         // Routes pour les méthodes GET
@@ -131,7 +129,7 @@ private:
     void setupStaticFiles() {
         _server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
         _server.onNotFound([](AsyncWebServerRequest *request) {
-            request->send(404, "text/plain", "Not Found");
+            request->send(404, MIME_TEXT, ERROR_NOT_FOUND);
         });
     }
 
@@ -142,9 +140,9 @@ private:
         if (_apiServer.executeMethod(path, nullptr, response)) {
             String responseStr;
             serializeJson(doc, responseStr);
-            request->send(200, "application/json", responseStr);
+            request->send(200, MIME_JSON, responseStr);
         } else {
-            request->send(400, "application/json", "{\"error\":\"Bad Request\"}");
+            request->send(400, MIME_JSON, ERROR_BAD_REQUEST);
         }
     }
 
@@ -156,9 +154,9 @@ private:
         if (_apiServer.executeMethod(path, &args, response)) {
             String responseStr;
             serializeJson(doc, responseStr);
-            request->send(200, "application/json", responseStr);
+            request->send(200, MIME_JSON, responseStr);
         } else {
-            request->send(400, "application/json", "{\"error\":\"Bad Request\"}");
+            request->send(400, MIME_JSON, ERROR_BAD_REQUEST);
         }
     }
 
@@ -198,13 +196,10 @@ private:
     }
 
     void processWsQueue() {
-        if (xSemaphoreTake(_queueMutex, portMAX_DELAY) == pdTRUE) {
-            while (!_wsQueue.empty()) {
-                String message = _wsQueue.front();
-                _wsQueue.pop();
-                _ws.textAll(message);
-            }
-            xSemaphoreGive(_queueMutex);
+        while (!_wsQueue.empty()) {
+            String message = _wsQueue.front();
+            _wsQueue.pop();
+            _ws.textAll(message);
         }
     }
 };

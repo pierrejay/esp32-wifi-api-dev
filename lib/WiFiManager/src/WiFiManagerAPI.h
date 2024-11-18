@@ -12,7 +12,7 @@ public:
         , _apiServer(apiServer)
         , _lastNotification(0) 
     {
-        // S'abonner aux changements d'état
+        // Subscribe to WiFi state changes
         _wifiManager.onStateChange([this]() {
             sendNotification(true);
         });
@@ -21,11 +21,11 @@ public:
     }
 
     /**
-     * @brief Vérifie les changements d'état et envoie les mises à jour WebSocket
+     * @brief Checks for state changes and sends updates via WebSocket
      * 
-     * Doit être appelé régulièrement dans la boucle principale.
-     * Envoie les mises à jour via WebSocket lorsque des changements d'état sont détectés
-     * et que l'intervalle minimum est écoulé.
+     * Must be called regularly in the main loop.
+     * Sends updates via WebSocket when state changes are detected
+     * and the minimum interval has elapsed.
      */
     void poll() {
         unsigned long now = millis();
@@ -123,9 +123,9 @@ private:
             .param("ssid", "string")
             .param("password", "string")
             .param("channel", "int")
-            .param("ip", "string", false)
-            .param("gateway", "string", false)
-            .param("subnet", "string", false)
+            .param("ip", "string", false)       // Optional
+            .param("gateway", "string", false)  // Optional
+            .param("subnet", "string", false)   // Optional
             .response("success", "bool")
             .build()
         );
@@ -142,9 +142,9 @@ private:
             .param("ssid", "string")
             .param("password", "string")
             .param("dhcp", "bool")
-            .param("ip", "string", false)
-            .param("gateway", "string", false)
-            .param("subnet", "string", false)
+            .param("ip", "string", false)       // Optional
+            .param("gateway", "string", false)  // Optional
+            .param("subnet", "string", false)   // Optional
             .response("success", "bool")
             .build()
         );
@@ -221,7 +221,7 @@ private:
         _wifiManager.getConfigToJson(newConfig);
 
         bool changed = (force || _previousState.isNull() || newState != _previousState);
-        
+        // If force mode on or change happened, send notification to clients
         if (changed) {
             _apiServer.broadcast("wifi/events", newState.as<JsonObject>());
             _previousState = newState;

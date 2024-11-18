@@ -312,18 +312,18 @@
     </div>
 
     <script>
-        // Configuration du serveur
+        // Server configuration
         const SERVER_CONFIG = {
             HOST: window.location.protocol === 'file:' ? 'localhost' : window.location.hostname,
             PORT: window.location.protocol === 'file:' ? 3001 : (window.location.port || 80),
             WS_PATH: '/ws'
         };
 
-        // Construction des URLs
+        // URL construction
         const BASE_URL = `${window.location.protocol === 'file:' ? 'http:' : window.location.protocol}//${SERVER_CONFIG.HOST}:${SERVER_CONFIG.PORT}`;
         const WS_URL = `${window.location.protocol === 'file:' ? 'ws:' : (window.location.protocol === 'https:' ? 'wss:' : 'ws:')}//${SERVER_CONFIG.HOST}:${SERVER_CONFIG.PORT}${SERVER_CONFIG.WS_PATH}`;
 
-        // Utilisation des mêmes endpoints que dans constants.js
+        // Same endpoints as in constants.js
         const API_ENDPOINTS = {
             CONFIG: '/api/wifi/config',
             HOSTNAME: '/api/wifi/hostname',
@@ -339,7 +339,7 @@
         let reconnectInterval = WS_RECONNECT_INTERVAL;
         let isConnecting = false;
 
-        // Cache des éléments DOM
+        // DOM elements cache
         const elements = {
             hostname: document.getElementById('hostname'),
             hostnameValue: document.getElementById('hostnameValue'),
@@ -363,7 +363,7 @@
             staSubnetValue: document.getElementById('sta-subnet-value')
         };
 
-        // État de scan
+        // Scan state
         let isScanning = false;
 
         // Initialisation
@@ -381,12 +381,12 @@
             setupEventListeners();
         }
 
-        // Configuration des écouteurs d'événements
+        // Event listeners setup
         function setupEventListeners() {
             elements.staDHCP.addEventListener('change', toggleStaticConfig);
         }
 
-        // Helper pour les appels API modifié
+        // Helper for API calls
         async function callApi(endpoint, options = {}) {
             try {
                 const urlString = `${BASE_URL}${endpoint}`;
@@ -397,14 +397,14 @@
                     headers: {
                         'Content-Type': 'application/json',
                         'Accept': 'application/json',
-                        // Ajout des en-têtes CORS pour le développement local
+                        // CORS headers for local development
                         ...(window.location.protocol === 'file:' ? {
                             'Origin': 'null',
                             'Access-Control-Request-Method': options.method || 'GET',
                         } : {}),
                         ...(options.headers || {})
                     },
-                    // Ajout des options CORS
+                    // CORS options for local development
                     mode: window.location.protocol === 'file:' ? 'cors' : 'same-origin',
                     credentials: window.location.protocol === 'file:' ? 'omit' : 'same-origin'
                 });
@@ -414,16 +414,16 @@
                 }
                 return response.json();
             } catch (error) {
-                // Amélioration de la gestion des erreurs
+                // Improved error handling
                 if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
-                    console.error('Erreur de connexion au serveur. Vérifiez que le serveur est bien lancé sur le port 3001');
+                    console.error('Server connection error. Check that the server is running on port 3001');
                 }
                 console.error('API call error:', error);
                 throw error;
             }
         }
 
-        // Modification des fonctions pour utiliser le même format de requêtes
+        // Modified functions to use the same request format
         async function loadConfiguration() {
             try {
                 const config = await callApi(API_ENDPOINTS.CONFIG);
@@ -452,30 +452,30 @@
             }
         }
 
-        // Modification de la fonction connectWebSocket
+        // Modified function to connect to WebSocket
         function connectWebSocket() {
             if (isConnecting || ws?.readyState === WebSocket.CONNECTING) return;
 
             isConnecting = true;
-            console.log('Tentative de connexion WebSocket à:', WS_URL);
+            console.log('WebSocket connection attempt:', WS_URL);
             ws = new WebSocket(WS_URL);
             setupWebSocketHandlers();
         }
 
         function setupWebSocketHandlers() {
             ws.onopen = () => {
-                console.log('WebSocket connecté');
+                console.log('WebSocket connected');
                 isConnecting = false;
                 reconnectInterval = WS_RECONNECT_INTERVAL;
             };
 
             ws.onclose = () => {
-                console.log('WebSocket déconnecté');
+                console.log('WebSocket disconnected');
                 handleWebSocketDisconnection();
             };
 
             ws.onerror = (error) => {
-                console.error('Erreur WebSocket:', error);
+                console.error('WebSocket error:', error);
                 handleWebSocketError();
             };
 
@@ -510,12 +510,12 @@
             try {
                 const data = JSON.parse(event.data);
                 if (data.type === 'wifi_manager') {
-                    // Mise à jour du statut de connexion
+                    // Update connection status
                     if (data.data.status) {
                         updateConnectionStatus(data.data.status);
                     }
                     
-                    // Mise à jour de la configuration si présente
+                    // Update configuration if present
                     if (data.data.config) {
                         updateUI({
                             hostname: data.data.config.hostname,
@@ -539,7 +539,7 @@
             }
         }
 
-        // Mise à jour de l'interface
+        // UI update
         function updateUI(config) {
             // Hostname
             elements.hostnameValue.textContent = config.hostname;
@@ -558,7 +558,7 @@
             elements.staPassword.value = config.sta.password;
             elements.staPasswordValue.textContent = config.sta.password;
 
-            // Configuration statique
+            // Static configuration
             elements.staDHCP.checked = config.sta.dhcp;
             elements.staStaticConfig.style.display = config.sta.dhcp ? 'none' : 'block';
             if (!config.sta.dhcp) {
@@ -589,7 +589,7 @@
                     elements.apSSIDValue.textContent = config.ssid;
                     elements.apPasswordValue.textContent = config.password;
                     
-                    // Mise à jour immédiate du statut en fonction de enabled
+                    // Update status immediately based on enabled
                     if (!config.enabled) {
                         updateStatusIndicator('ap', 'disabled');
                     } else {
@@ -650,29 +650,29 @@
                 dhcp: elements.staDHCP.checked
             };
 
-            // Si DHCP est désactivé, gérer la configuration IP
+            // If DHCP is disabled, handle IP configuration
             if (!config.dhcp) {
                 const ip = elements.staIP.value.trim();
                 const gateway = elements.staGateway.value.trim();
                 const subnet = elements.staSubnet.value.trim();
 
-                // Validation de l'IP (obligatoire si DHCP off)
+                // IP validation (required if DHCP off)
                 if (!ip) {
                     console.error('IP address is required when DHCP is disabled');
                     return;
                 }
 
-                // Validation du format IP
+                // IP format validation
                 const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
                 if (!ipRegex.test(ip)) {
                     console.error('Invalid IP address format');
                     return;
                 }
 
-                // Ajouter l'IP à la configuration
+                // Add IP to configuration
                 config.ip = ip;
 
-                // Si gateway OU subnet est rempli, les deux doivent être remplis et valides
+                // If gateway or subnet is filled, both must be filled and valid
                 if (gateway || subnet) {
                     if (!gateway || !subnet) {
                         console.error('Both Gateway and Subnet must be specified together');
@@ -689,7 +689,7 @@
                         return;
                     }
 
-                    // Ajouter gateway et subnet uniquement s'ils sont tous les deux valides
+                    // Add gateway and subnet only if both are valid
                     config.gateway = gateway;
                     config.subnet = subnet;
                 }
@@ -713,7 +713,7 @@
                         elements.staSubnetValue.textContent = config.subnet;
                     }
 
-                    // Mise à jour immédiate du statut en fonction de enabled
+                    // Update status immediately based on enabled
                     if (!config.enabled) {
                         updateStatusIndicator('sta', 'disabled');
                     } else {
@@ -732,7 +732,7 @@
         }
 
         function updateStatusIndicator(type, status) {
-            // Sélectionner le bon élément de statut en fonction du type (ap ou sta)
+            // Select the correct status element based on type (ap or sta)
             const statusContainer = document.querySelector(`.${type}-status`);
             if (!statusContainer) return;
 
@@ -742,21 +742,21 @@
             
             if (!dot || !text) return;
 
-            // Retirer toutes les classes de statut
+            // Remove all status classes
             dot.classList.remove('connected', 'disconnected', 'disabled', 'connecting');
             dot.classList.add(status);
 
-            // Mettre à jour le texte
+            // Update text
             text.textContent = status.charAt(0).toUpperCase() + status.slice(1);
             
-            // Gérer l'indicateur de chargement
+            // Handle loading indicator
             if (loading) {
                 loading.classList.toggle('hidden', status !== 'connecting');
             }
         }
 
         function updateConnectionStatus(status) {
-            // Mise à jour du statut AP
+            // Update AP status
             if (status.ap) {
                 const apStatus = !status.ap.enabled ? 'disabled' :
                                 (status.ap.busy && !status.ap.connected) ? 'connecting' :
@@ -769,22 +769,22 @@
                     const ip = apStatusElement.querySelector('.status-ip');
                     const loading = apStatusElement.querySelector('.loading');
 
-                    // Mise à jour du point de statut
+                    // Update status dot
                     dot.classList.remove('connected', 'disconnected', 'disabled', 'connecting');
                     dot.classList.add(apStatus);
 
-                    // Mise à jour du texte
+                    // Update text
                     text.textContent = apStatus.charAt(0).toUpperCase() + apStatus.slice(1);
 
-                    // Mise à jour de l'IP uniquement si connecté
+                    // Update IP only if connected
                     ip.textContent = (status.ap.connected && status.ap.ip) ? status.ap.ip : '';
 
-                    // Gestion du loading basée sur busy
+                    // Handle loading based on busy
                     loading.classList.toggle('hidden', !status.ap.busy);
                 }
             }
 
-            // Mise à jour du statut STA
+            // Update STA status
             if (status.sta) {
                 const staStatus = !status.sta.enabled ? 'disabled' :
                                 (status.sta.busy && !status.sta.connected) ? 'connecting' :
@@ -798,27 +798,27 @@
                     const rssi = staStatusElement.querySelector('.status-rssi');
                     const loading = staStatusElement.querySelector('.loading');
 
-                    // Mise à jour du point de statut
+                    // Update status dot
                     dot.classList.remove('connected', 'disconnected', 'disabled', 'connecting');
                     dot.classList.add(staStatus);
 
-                    // Mise à jour du texte
+                    // Update text
                     text.textContent = staStatus.charAt(0).toUpperCase() + staStatus.slice(1);
 
-                    // Mise à jour de l'IP et RSSI uniquement si connecté
+                    // Update IP and RSSI only if connected
                     ip.textContent = (status.sta.connected && status.sta.ip) ? status.sta.ip : '';
                     rssi.textContent = (status.sta.connected && status.sta.rssi) ? `${status.sta.rssi} dBm` : '';
 
-                    // Gestion du loading basée sur busy
+                    // Handle loading based on busy
                     loading.classList.toggle('hidden', !status.sta.busy);
                 }
             }
         }
 
-        // Démarrage
+        // Start
         init();
 
-        // Ajout d'une fonction de vérification de la connexion au serveur
+        // Add a function to check server connection
         async function checkServerConnection() {
             try {
                 await fetch(`${BASE_URL}/api/config`, {
@@ -827,10 +827,10 @@
                         'Accept': 'application/json'
                     }
                 });
-                console.log('Serveur accessible');
+                console.log('Server accessible');
                 return true;
             } catch (error) {
-                console.error('Serveur inaccessible:', error);
+                console.error('Server inaccessible:', error);
                 return false;
             }
         }
