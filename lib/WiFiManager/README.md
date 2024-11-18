@@ -4,11 +4,7 @@
 - [Overview](#overview)
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
-- [Core Components](#core-components)
-- [Configuration](#configuration)
-- [Status Management](#status-management)
-- [Event System](#event-system)
-- [Network Scanning](#network-scanning)
+- [APIServer Integration](#apiserver-integration)
 - [Implementation Details](#implementation-details)
 - [Important Notes](#important-notes)
 
@@ -76,9 +72,9 @@ void loop() {
 }
 ```
 
-## Configuration
+### Configuration
 
-### Access Point (AP) Configuration
+#### Access Point (AP) Configuration
 
 ```cpp
 // Using JSON configuration
@@ -94,7 +90,7 @@ apConfig["subnet"] = "255.255.255.0";
 wifiManager.setAPConfigFromJson(apConfig.as<JsonObject>());
 ```
 
-#### AP Configuration Parameters
+##### AP Configuration Parameters
 - `enabled (bool)`: Enable/disable AP mode
 - `ssid (string)`: Network name (32 chars max)
 - `password (string)`: Network password (8-64 chars)
@@ -103,7 +99,7 @@ wifiManager.setAPConfigFromJson(apConfig.as<JsonObject>());
 - `gateway (string)`: Gateway IP
 - `subnet (string)`: Subnet mask
 
-### Station (STA) Configuration
+#### Station (STA) Configuration
 
 ```cpp
 // Using JSON configuration
@@ -119,7 +115,7 @@ staConfig["subnet"] = "255.255.255.0";
 wifiManager.setSTAConfigFromJson(staConfig.as<JsonObject>());
 ```
 
-#### STA Configuration Parameters
+##### STA Configuration Parameters
 - `enabled (bool)`: Enable/disable STA mode
 - `ssid (string)`: Network to connect to
 - `password (string)`: Network password
@@ -128,36 +124,7 @@ wifiManager.setSTAConfigFromJson(staConfig.as<JsonObject>());
 - `gateway (string, optional)`: Gateway IP
 - `subnet (string, optional)`: Subnet mask
 
-## Status Management
-
-### Getting Current Status
-
-```cpp
-StaticJsonDocument<512> status;
-JsonObject statusObj = status.to<JsonObject>();
-wifiManager.getStatusToJson(statusObj);
-```
-
-Status JSON format:
-```json
-{
-    "ap": {
-        "enabled": true,
-        "connected": true,
-        "clients": 2,
-        "ip": "192.168.4.1",
-        "rssi": 0
-    },
-    "sta": {
-        "enabled": true,
-        "connected": true,
-        "ip": "192.168.1.200",
-        "rssi": -65
-    }
-}
-```
-
-## Network Scanning
+### Network Scanning
 
 ```cpp
 StaticJsonDocument<512> networks;
