@@ -1,29 +1,17 @@
 #ifndef WIFI_MANAGER_API_H
 #define WIFI_MANAGER_API_H
 
-#include <ESPAsyncWebServer.h>
-#include <APIServer.h>
-#include <ArduinoJson.h>
 #include "WiFiManager.h"
+#include "RPCServer.h"
+#include <ArduinoJson.h>
 
-/**
- * @brief Classe API pour le gestionnaire WiFi
- * 
- * Cette classe fournit une interface REST API et WebSocket pour le gestionnaire WiFi.
- * Elle gère les requêtes HTTP pour obtenir et définir les paramètres WiFi,
- * et diffuse les changements d'état via WebSocket.
- */
 class WiFiManagerAPI {
 public:
-    /**
-     * @brief Construit un nouvel objet WiFiManagerAPI
-     * 
-     * @param wifiManager Référence vers l'instance du gestionnaire WiFi
-     * @param apiServer Référence vers le serveur API pour la gestion WebSocket
-     */
-    WiFiManagerAPI(WiFiManager& wifiManager, APIServer& apiServer) 
-        : _wifiManager(wifiManager), _apiServer(apiServer), _lastNotification(0) {
-        
+    WiFiManagerAPI(WiFiManager& wifiManager, RPCServer& rpcServer) 
+        : _wifiManager(wifiManager)
+        , _rpcServer(rpcServer)
+        , _lastNotification(0) 
+    {
         // S'abonner aux changements d'état
         _wifiManager.onStateChange([this]() {
             sendNotification(true);
@@ -48,86 +36,190 @@ public:
 
 private:
     WiFiManager& _wifiManager;
-    APIServer& _apiServer;
+    RPCServer& _rpcServer;
     unsigned long _lastNotification;
     StaticJsonDocument<2048> _previousState;
-    static constexpr unsigned long NOTIFICATION_INTERVAL = 500; // Intervalle minimum entre les mises à jour WebSocket en millisecondes
+    static constexpr unsigned long NOTIFICATION_INTERVAL = 500;
 
-    /**
-     * @brief Envoie les mises à jour d'état via WebSocket
-     * 
-     * @param force Force l'envoi même si aucun changement n'est détecté
-     * @return true si des changements ont été envoyés
-     */
+    void registerMethods() {
+        // GET wifi/status
+        _rpcServer.registerMethod("wifi/status", 
+            RPCMethodBuilder(RPCMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                _wifiManager.getStatusToJson(response);
+                return true;
+            })
+            .desc("Get WiFi status")
+            .response("ap", {
+                {"enabled", "bool"},
+                {"connected", "bool"},
+                {"clients", "int"},
+                {"ip", "string"},
+                {"rssi", "int"}
+            })
+            .response("sta", {
+                {"enabled", "bool"},
+                {"connected", "bool"},
+                {"ip", "string"},
+                {"rssi", "int"}
+            })
+            .build()
+        );
+
+        // GET wifi/config
+        _rpcServer.registerMethod("wifi/config",
+            RPCMethodBuilder(RPCMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                _wifiManager.getConfigToJson(response);
+                return true;
+            })
+            .desc("Get WiFi configuration")
+            .response("ap", {
+                {"enabled", "bool"},
+                {"ssid", "string"},
+                {"password", "string"},
+       {"channel", "int"},
+                {"ip", "string"},
+                {"gateway", "string"},
+                {"subnet", "string"}
+            })
+            .response("sta", {
+                {"enabled", "bool"},
+                {"ssid", "string"},
+                {"password", "string"},
+                {"dhcp", "bool"},
+                {"ip", "string"},
+                {"gateway", "string"},
+                {"subnet", "string"}
+            })
+            .build()
+        );
+
+        // GET wifi/scan
+        _rpcServer.registerMethod("wifi/scan",
+            RPCMethodBuilder(RPCMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                _wifiManager.getAvailableNetworks(response);
+                return true;
+            })
+            .desc("Scan available WiFi networks")
+            .response("networks", {
+                {"ssid", "string"},
+                {"rssi", "int"},
+                {"encryption", "int"}
+            })
+            .build()
+        );
+
+        // SET wifi/ap/config
+        _rpcServer.registerMethod("wifi/ap/config",
+            RPCMethodBuilder(RPCMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+                bool success = _wifiManager.setAPConfigFromJson(*args);
+                response["success"] = success;
+                return true;
+            })
+            .desc("Configure Access Point")
+            .param("enabled", "bool")
+            .param("ssid", "string")
+            .param("password", "string")
+            .param("channel", "int")
+            .param("ip", "string", false)
+            .param("gateway", "string", false)
+            .param("subnet", "string", false)
+            .response("success", "bool")
+            .build()
+        );
+
+        // SET wifi/sta/config
+        _rpcServer.registerMethod("wifi/sta/config",
+            RPCMethodBuilder(RPCMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+                bool success = _wifiManager.setSTAConfigFromJson(*args);
+                response["success"] = success;
+                return true;
+            })
+            .desc("Configure Station mode")
+            .param("enabled", "bool")
+            .param("ssid", "string")
+            .param("password", "string")
+            .param("dhcp", "bool")
+            .param("ip", "string", false)
+            .param("gateway", "string", false)
+            .param("subnet", "string", false)
+            .response("success", "bool")
+            .build()
+        );
+
+        // SET wifi/hostname
+        _rpcServer.registerMethod("wifi/hostname",
+            RPCMethodBuilder(RPCMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+                if (!(*args)["hostname"].is<const char*>()) {
+                    return false;
+                }
+                bool success = _wifiManager.setHostname((*args)["hostname"].as<const char*>());
+                response["success"] = success;
+                return true;
+            })
+            .desc("Set device hostname")
+            .param("hostname", "string")
+            .response("success", "bool")
+            .build()
+        );
+
+        // EVT wifi/events
+        _rpcServer.registerMethod("wifi/events",
+            RPCMethodBuilder(RPCMethodType::EVT)
+            .desc("WiFi status and configuration updates")
+            .response("status", {
+                {"ap", {
+                    {"enabled", "bool"},
+                    {"connected", "bool"},
+                    {"clients", "int"},
+                    {"ip", "string"},
+                    {"rssi", "int"}
+                }},
+                {"sta", {
+                    {"enabled", "bool"},
+                    {"connected", "bool"},
+                    {"ip", "string"},
+                    {"rssi", "int"}
+                }}
+            })
+            .response("config", {
+                {"ap", {
+                    {"enabled", "bool"},
+                    {"ssid", "string"},
+                    {"password", "string"},
+                    {"channel", "int"},
+                    {"ip", "string"},
+                    {"gateway", "string"},
+                    {"subnet", "string"}
+                }},
+                {"sta", {
+                    {"enabled", "bool"},
+                    {"ssid", "string"},
+                    {"password", "string"},
+                    {"dhcp", "bool"},
+                    {"ip", "string"},
+                    {"gateway", "string"},
+                    {"subnet", "string"}
+                }}
+            })
+            .build()
+        );
+    }
+
     bool sendNotification(bool force = false) {
-        // Fetch the current status and config
         StaticJsonDocument<2048> newState;
         JsonObject newStatus = newState["status"].to<JsonObject>();
         JsonObject newConfig = newState["config"].to<JsonObject>();
         _wifiManager.getStatusToJson(newStatus);
         _wifiManager.getConfigToJson(newConfig);
 
-        // Check if there are changes (or force update)
         bool changed = (force || _previousState.isNull() || newState != _previousState);
         
         if (changed) {
-            StaticJsonDocument<2048> sendDoc;
-            sendDoc["type"] = "wifi_manager";
-            JsonObject data = sendDoc["data"].to<JsonObject>();
-            data["status"] = newStatus;
-            data["config"] = newConfig;
-            String message;
-            serializeJson(sendDoc, message);
-            _apiServer.push(message);
+            _rpcServer.broadcast("wifi/events", newState.as<JsonObject>());
             _previousState = newState;
             return true;    
         }
         return false;
-    }
-
-    /**
-     * @brief Enregistre les méthodes API
-     */
-    void registerMethods() {
-        // Enregistrer les méthodes GET
-        _apiServer.addGetMethod("wifi", "status", [this](const JsonObject* args, JsonObject& response) {
-            _wifiManager.getStatusToJson(response);
-            return true;
-        });
-
-        _apiServer.addGetMethod("wifi", "config", [this](const JsonObject* args, JsonObject& response) {
-            response["hostname"] = _wifiManager.getHostname();
-            JsonObject config = response["config"].to<JsonObject>();
-            _wifiManager.getConfigToJson(config);
-            return true;
-        });
-
-        _apiServer.addGetMethod("wifi", "scan", [this](const JsonObject* args, JsonObject& response) {
-            _wifiManager.getAvailableNetworks(response);
-            return true;
-        });
-
-        // Enregistrer les méthodes SET
-        _apiServer.addSetMethod("wifi", "ap/config", [this](const JsonObject* args, JsonObject& response) {
-            bool success = _wifiManager.setAPConfigFromJson(*args);
-            response["success"] = success;
-            return true;
-        });
-
-        _apiServer.addSetMethod("wifi", "sta/config", [this](const JsonObject* args, JsonObject& response) {
-            bool success = _wifiManager.setSTAConfigFromJson(*args);
-            response["success"] = success;
-            return true;
-        });
-
-        _apiServer.addSetMethod("wifi", "hostname", [this](const JsonObject* args, JsonObject& response) {
-            if (!(*args)["hostname"].is<const char*>()) {
-                return false;
-            }
-            bool success = _wifiManager.setHostname((*args)["hostname"].as<const char*>());
-            response["success"] = success;
-            return true;
-        });
     }
 };
 

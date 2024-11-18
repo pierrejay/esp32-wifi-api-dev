@@ -9,17 +9,32 @@
 #include <map>
 #include <SPIFFS.h>
 
+
+
 /**
  * @brief Représente une méthode d'API générique (GET ou SET)
  */
 struct RPCMethod {
     using RPCHandler = std::function<bool(const JsonObject* args, JsonObject& response)>;
-    enum Type { GET, SET };
+    enum Type { GET, SET, EVT };
     
     Type type;
     RPCHandler handler;
+    String description;
+    std::vector<RPCParam> params;
+    std::vector<RPCParam> returns;
+    
     
     bool isGet() const { return type == GET; }
+};
+
+/**
+ * @brief Représente un paramètre d'une méthode RPC
+ */
+struct RPCParam {
+    String name;
+    String type;     // "bool", "int", "float", "str"
+    bool required;
 };
 
 /**
