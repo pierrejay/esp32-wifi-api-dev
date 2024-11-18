@@ -41,6 +41,9 @@ private:
     StaticJsonDocument<2048> _previousState;
     static constexpr unsigned long NOTIFICATION_INTERVAL = 500;
 
+    /**
+     * @brief Register the methods to the API server
+     */
     void registerMethods() {
         // GET wifi/status
         _apiServer.registerMethod("wifi/status", 
@@ -205,6 +208,11 @@ private:
         );
     }
 
+    /**
+     * @brief Send a notification to the API server
+     * @param force Force the notification even if the state has not changed
+     * @return True if the notification has been sent, false otherwise
+     */
     bool sendNotification(bool force = false) {
         StaticJsonDocument<2048> newState;
         JsonObject newStatus = newState["status"].to<JsonObject>();

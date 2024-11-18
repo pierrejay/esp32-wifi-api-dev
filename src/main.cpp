@@ -5,49 +5,49 @@
 #include "APIServer.h"
 #include "WebAPIEndpoint.h"
 
-// Déclaration des objets globaux
+// Declaration of global objects
 WiFiManager wifiManager;  
 APIServer apiServer;
 WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
-WebAPIEndpoint webServer(apiServer, 80);  // Création sur la pile
+WebAPIEndpoint webServer(apiServer, 80);  // Create webserver on the stack
 
 void setup() {
     Serial.begin(115200);
-    delay(3000);
-    Serial.println("Démarrage...");
+    Serial.println("Starting...");
 
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);
 
-    // Ajout du serveur web
-    apiServer.addEndpoint(&webServer);  // On passe l'adresse
+    // Add the web server endpoint to the API server
+    apiServer.addEndpoint(&webServer);  // Pass the address
 
-    // Vérification du système de fichiers
+    // Check the filesystem
     if(!SPIFFS.begin(true)) {
-        Serial.println("Erreur lors du montage SPIFFS");
+        Serial.println("Error mounting SPIFFS");
         while(1) {
             digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
             delay(100);
         }
     }
 
-    // Initialisation du WiFiManager
+    // Initialize the WiFiManager
     if (!wifiManager.begin()) {
-        Serial.println("Erreur d'initialisation WiFiManager");
+        Serial.println("Error initializing WiFiManager");
         while(1) {
             digitalWrite(LED_BUILTIN, !digitalRead(LED_BUILTIN));
             delay(200);
         }
     }
 
-    // Démarrage du serveur API
+    // Start the API server
     apiServer.begin(); 
 
-    Serial.println("Système initialisé");
+    Serial.println("System initialized");
     digitalWrite(LED_BUILTIN, LOW);
 }
 
 void loop() {
+    // Poll the WiFiManager, its API interface and the API server
     wifiManager.poll();
     wifiManagerAPI.poll();
     apiServer.poll(); 

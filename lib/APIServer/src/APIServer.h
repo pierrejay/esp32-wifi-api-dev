@@ -17,7 +17,6 @@ enum class APIMethodType {
     EVT
 };
 
-// Structure describing an API parameter
 struct APIParam {
     String name;
     String type;     // "bool", "int", "float", "string", "obj"
@@ -33,7 +32,6 @@ struct APIParam {
         : name(n), type("obj"), required(r), properties(props) {}
 };
 
-// Structure describing an API method
 struct APIMethod {
     using Handler = std::function<bool(const JsonObject* args, JsonObject& response)>;
     
@@ -44,7 +42,6 @@ struct APIMethod {
     std::vector<APIParam> responseParams;
 };
 
-// Builder for APIMethod
 class APIMethodBuilder {
 public:
     // Constructeur normal pour GET/SET
@@ -96,25 +93,45 @@ private:
     APIMethod _method;
 };
 
-// Main API Server
+/**
+ * @brief Main API Server
+ */
 class APIServer {
 public:
+    /**
+     * @brief Initialize all endpoints
+     */
     void begin() {
         for (APIEndpoint* endpoint : _endpoints) {
             endpoint->begin();
         }
     }
 
+    /**
+     * @brief Poll endpoints for client requests
+     */
     void poll() {
         for (APIEndpoint* endpoint : _endpoints) {
             endpoint->poll();
         }
     }
 
+    /**
+     * @brief Register a method to the API server
+     * @param path The path of the method
+     * @param method The method to register
+     */
     void registerMethod(const String& path, const APIMethod& method) {
         _methods[path] = method;
     }
 
+    /**
+     * @brief Execute a method
+     * @param path The path of the method
+     * @param args The arguments of the method
+     * @param response The response of the method
+     * @return True if the method has been executed, false otherwise
+     */
     bool executeMethod(const String& path, const JsonObject* args, JsonObject& response) {
         auto it = _methods.find(path);
         if (it != _methods.end()) {
@@ -126,6 +143,11 @@ public:
         return false;
     }
 
+    /**
+     * @brief Broadcast an event to all endpoints
+     * @param event The event to broadcast
+     * @param data The data to broadcast
+     */
     void broadcast(const String& event, const JsonObject& data) {
         for (APIEndpoint* endpoint : _endpoints) {
             for (const auto& proto : endpoint->getProtocols()) {
@@ -137,6 +159,10 @@ public:
         }
     }
 
+    /**
+     * @brief Get the API documentation
+     * @return The API documentation
+     */
     JsonArray getAPIDoc() {
         StaticJsonDocument<2048> doc;
         JsonArray methods = doc.to<JsonArray>();
@@ -199,11 +225,20 @@ public:
         return methods;
     }
 
-    // Donne accès aux méthodes enregistrées (en lecture seule)
+    /**
+     * @brief Gives access to the methods registered in the API server
+     * @return The methods registered in the API server
+     */
     const std::map<String, APIMethod>& getMethods() const {
         return _methods;
     }
 
+    /**
+     * @brief Validate the parameters of a method
+     * @param method The method called
+     * @param args The arguments of incoming request
+     * @return True if the required parameters are present, false otherwise
+     */
     bool validateParams(const APIMethod& method, const JsonObject* args) {
         if (!args && !method.requestParams.empty()) {
             return false;  // Pas d'arguments alors qu'on en attend
@@ -219,13 +254,16 @@ public:
         return true;
     }
 
-
+    /**
+     * @brief Add an endpoint to the API server (called in setup())
+     * @param endpoint The endpoint to add
+     */
     void addEndpoint(APIEndpoint* endpoint) {
         _endpoints.push_back(endpoint);
     }
 
 private:
-    std::vector<APIEndpoint*> _endpoints;  // Simple vecteur de pointeurs
+    std::vector<APIEndpoint*> _endpoints;
     std::map<String, APIMethod> _methods;
 
     static String toString(APIMethodType type) {
