@@ -2,6 +2,7 @@
 #define WEB_API_SERVER_H
 
 #include "RPCServer.h"
+#include "APIServer.h"
 #include <ESPAsyncWebServer.h>
 #include <AsyncWebSocket.h>
 #include <AsyncJson.h>

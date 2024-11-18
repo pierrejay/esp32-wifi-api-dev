@@ -6,11 +6,9 @@
 #include <vector>
 #include <map>
 #include <memory>
-#include "WebAPIServer.h"
+#include "APIServer.h"
 
 // Forward declarations
-class APIServer;
-class RPCServer;
 class WebAPIServer;
 
 enum class RPCMethodType {
@@ -98,51 +96,9 @@ private:
     RPCMethod _method;
 };
 
-// Base class for all API Servers
-class APIServer {
-public:
-    enum Capability {
-        GET = 1 << 0,
-        SET = 1 << 1,
-        EVT = 1 << 2
-    };
-
-    struct Protocol {
-        String name;
-        uint8_t capabilities;
-    };
-
-    APIServer(RPCServer& rpcServer) : _rpcServer(rpcServer) {}
-    virtual ~APIServer() = default;
-
-    virtual void begin() = 0;
-    virtual void poll() = 0;
-    
-    virtual void handleGet(const String& path, const JsonObject* args, JsonObject& response) = 0;
-    virtual void handleSet(const String& path, const JsonObject& args, JsonObject& response) = 0;
-    virtual void pushEvent(const String& event, const JsonObject& data) = 0;
-
-    const std::vector<Protocol>& getProtocols() const { return _protocols; }
-
-protected:
-    void addProtocol(const String& name, uint8_t capabilities) {
-        _protocols.push_back({name, capabilities});
-    }
-
-    std::vector<Protocol> _protocols;
-    RPCServer& _rpcServer;
-};
-
 // Main RPC Server
 class RPCServer {
 public:
-    WebAPIServer& createWebServer(uint16_t port) {
-        std::unique_ptr<WebAPIServer> server(new WebAPIServer(*this, port));
-        auto& ref = *server;
-        _servers.push_back(std::unique_ptr<APIServer>(server.release()));
-        return ref;
-    }
-
     void begin() {
         for (const auto& server : _servers) {
             server->begin();
@@ -261,6 +217,16 @@ public:
             }
         }
         return true;
+    }
+
+    // Pour les serveurs alloués dynamiquement
+    void addServer(std::unique_ptr<APIServer>&& server) {
+        _servers.push_back(std::move(server));
+    }
+
+    // Pour les serveurs avec durée de vie garantie (objets globaux)
+    void addServer(APIServer& server) {
+        _servers.push_back(std::unique_ptr<APIServer>(&server, [](APIServer*) {}));
     }
 
 private:

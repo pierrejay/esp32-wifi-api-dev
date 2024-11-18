@@ -1,13 +1,15 @@
 #include <Arduino.h>
-#include "APIServer.h"
+#include <SPIFFS.h>
 #include "WiFiManager.h"
 #include "WiFiManagerAPI.h"
-#include <SPIFFS.h>
+#include "RPCServer.h"
+#include "WebAPIServer.h"
 
 // Déclaration des objets globaux
 WiFiManager wifiManager;  
-APIServer apiServer(80);  
-WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
+RPCServer rpcServer;
+WebAPIServer webServer(rpcServer, 80);  // Création sur la pile
+WiFiManagerAPI wifiManagerAPI(wifiManager, rpcServer);
 
 void setup() {
     Serial.begin(115200);
@@ -16,6 +18,9 @@ void setup() {
 
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);
+
+    // Ajout du serveur web
+    rpcServer.addServer(webServer);  // Plus simple et plus clair !
 
     // Vérification du système de fichiers
     if(!SPIFFS.begin(true)) {
@@ -35,8 +40,8 @@ void setup() {
         }
     }
 
-    // Démarrage du serveur API
-    apiServer.begin();
+    // Démarrage du serveur RPC
+    rpcServer.begin();  // Changé de apiServer à rpcServer
 
     Serial.println("Système initialisé");
     digitalWrite(LED_BUILTIN, LOW);
@@ -45,5 +50,5 @@ void setup() {
 void loop() {
     wifiManager.poll();
     wifiManagerAPI.poll();
-    apiServer.poll();
+    rpcServer.poll();  // Changé de apiServer à rpcServer
 }
