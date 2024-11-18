@@ -1,0 +1,839 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WiFi Configuration</title>
+    <style>
+        :root {
+            --primary-color: #1a56db;
+            --bg-dark: #1e293b;
+            --text-light: #f8fafc;
+            --border-color: #334155;
+            --input-bg: #1e293b;
+            --button-bg: #2563eb;
+            --button-hover: #1d4ed8;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg-dark);
+            color: var(--text-light);
+        }
+
+        .header {
+            background-color: var(--primary-color);
+            padding: 1rem;
+            font-size: 1.5rem;
+            font-weight: 500;
+        }
+
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 1rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: 200px 1fr 300px;
+            gap: 1rem;
+            align-items: center;
+            padding: 0.75rem 0;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .grid:last-child {
+            border-bottom: none;
+        }
+
+        .section-title {
+            font-size: 1.25rem;
+            font-weight: 500;
+            padding: 1rem 0;
+        }
+
+        .status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            white-space: nowrap;
+        }
+
+        .status-dot {
+            flex-shrink: 0;
+            width: 6px;
+            height: 6px;
+            border-radius: 9999px;
+            display: inline-block;
+        }
+
+        .status-text {
+            font-size: 0.875rem;
+        }
+
+        .status-ip, .status-rssi {
+            color: #94a3b8;
+            margin-left: 0.25rem;
+            font-size: 0.875rem;
+            white-space: nowrap;
+        }
+
+        .status-dot.connected { background-color: #10b981; }
+        .status-dot.disconnected { background-color: #ef4444; }
+        .status-dot.disabled { background-color: #4b5563; }
+        .status-dot.connecting { background-color: #f59e0b; }
+
+        .input, .select {
+            width: 100%;
+            padding: 0.5rem;
+            background-color: var(--input-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 0.25rem;
+            color: var(--text-light);
+            font-size: 0.875rem;
+        }
+
+        .button {
+            background-color: var(--button-bg);
+            color: white;
+            border: none;
+            padding: 0.5rem 1rem;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+        }
+
+        .button:hover {
+            background-color: var(--button-hover);
+        }
+
+        .network-select-group {
+            display: flex;
+            gap: 0.5rem;
+        }
+
+        .switch {
+            position: relative;
+            display: inline-block;
+            width: 44px;
+            height: 22px;
+        }
+
+        .switch input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .slider {
+            position: absolute;
+            cursor: pointer;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: #4b5563;
+            transition: .4s;
+            border-radius: 22px;
+        }
+
+        .slider:before {
+            position: absolute;
+            content: "";
+            height: 18px;
+            width: 18px;
+            left: 2px;
+            bottom: 2px;
+            background-color: white;
+            transition: .4s;
+            border-radius: 50%;
+        }
+
+        input:checked + .slider {
+            background-color: var(--button-bg);
+        }
+
+        input:checked + .slider:before {
+            transform: translateX(22px);
+        }
+
+        .loading {
+            display: inline-block;
+            width: 16px;
+            height: 16px;
+            border: 2px solid #f3f3f3;
+            border-top: 2px solid var(--button-bg);
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 0.5rem;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <header class="header">
+        WiFi Configuration
+    </header>
+
+    <div class="container">
+        <div class="grid">
+            <div>Hostname (.local)</div>
+            <div id="hostnameValue">esp32</div>
+            <div style="display: flex; gap: 0.5rem;">
+                <input type="text" id="hostname" class="input" value="esp32">
+                <button onclick="updateHostname()" class="button">Set</button>
+            </div>
+        </div>
+
+        <div class="section-title">Access Point</div>
+
+        <div class="grid">
+            <div>Status</div>
+            <div class="status ap-status">
+                <span class="status-dot disabled"></span>
+                <span class="status-text">Disabled</span>
+                <span class="status-ip"></span>
+                <span class="loading hidden"></span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="ap-enabled" onchange="updateAPConfig()">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="grid">
+            <div>SSID</div>
+            <div id="ap-ssid-value"></div>
+            <div style="display: flex; gap: 0.5rem;">
+                <input type="text" id="ap-ssid" class="input" value="">
+                <button onclick="updateAPConfig()" class="button">Set</button>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div>Password</div>
+            <div id="ap-password-value"></div>
+            <div style="display: flex; gap: 0.5rem;">
+                <input type="password" id="ap-password" class="input" value="">
+                <button onclick="updateAPConfig()" class="button">Set</button>
+            </div>
+        </div>
+
+        <div class="section-title">Station Mode</div>
+
+        <div class="grid">
+            <div>Status</div>
+            <div class="status sta-status">
+                <span class="status-dot disabled"></span>
+                <span class="status-text">Disabled</span>
+                <span class="status-ip"></span>
+                <span class="status-rssi"></span>
+                <span class="loading hidden"></span>
+            </div>
+            <label class="switch">
+                <input type="checkbox" id="sta-enabled" onchange="updateSTAConfig()">
+                <span class="slider"></span>
+            </label>
+        </div>
+
+        <div class="grid">
+            <div>Network</div>
+            <div id="sta-ssid-value"></div>
+            <div class="network-select-group">
+                <select id="sta-networks" class="select">
+                    <option value="">Select a network</option>
+                </select>
+                <button onclick="scanNetworks()" class="button">Scan</button>
+                <button onclick="updateSTAConfig()" class="button">OK</button>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div>Password</div>
+            <div id="sta-password-value">MyPassword123</div>
+            <div style="display: flex; gap: 0.5rem;">
+                <input type="password" id="sta-password" class="input" value="MyPassword123">
+                <button onclick="updateSTAConfig()" class="button">Set</button>
+            </div>
+        </div>
+
+        <div class="grid">
+            <div>DHCP</div>
+            <div></div>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <label class="switch">
+                    <input type="checkbox" id="sta-dhcp" checked onchange="toggleStaticConfig()">
+                    <span class="slider"></span>
+                </label>
+                <button onclick="updateSTAConfig()" class="button">Set DHCP/IP settings</button>
+            </div>
+        </div>
+
+        <div id="sta-static-config" class="hidden">
+            <div class="grid">
+                <div>IP Address</div>
+                <div id="sta-ip-value"></div>
+                <div>
+                    <input type="text" id="sta-ip" class="input" placeholder="192.168.1.100">
+                </div>
+            </div>
+
+            <div class="grid">
+                <div>Gateway</div>
+                <div id="sta-gateway-value"></div>
+                <div>
+                    <input type="text" id="sta-gateway" class="input" placeholder="192.168.1.1">
+                </div>
+            </div>
+
+            <div class="grid">
+                <div>Subnet Mask</div>
+                <div id="sta-subnet-value"></div>
+                <div>
+                    <input type="text" id="sta-subnet" class="input" placeholder="255.255.255.0">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration du serveur
+        const SERVER_CONFIG = {
+            HOST: window.location.protocol === 'file:' ? 'localhost' : window.location.hostname,
+            PORT: window.location.protocol === 'file:' ? 3001 : (window.location.port || 80),
+            WS_PATH: '/ws'
+        };
+
+        // Construction des URLs
+        const BASE_URL = `${window.location.protocol === 'file:' ? 'http:' : window.location.protocol}//${SERVER_CONFIG.HOST}:${SERVER_CONFIG.PORT}`;
+        const WS_URL = `${window.location.protocol === 'file:' ? 'ws:' : (window.location.protocol === 'https:' ? 'wss:' : 'ws:')}//${SERVER_CONFIG.HOST}:${SERVER_CONFIG.PORT}${SERVER_CONFIG.WS_PATH}`;
+
+        // Utilisation des mêmes endpoints que dans constants.js
+        const API_ENDPOINTS = {
+            CONFIG: '/api/wifi/config',
+            HOSTNAME: '/api/wifi/hostname',
+            NETWORKS: '/api/wifi/networks/scan',
+            AP_CONFIG: '/api/wifi/ap/config',
+            STA_CONFIG: '/api/wifi/sta/config'
+        };
+
+        // WebSocket
+        let ws = null;
+        const WS_RECONNECT_INTERVAL = 1000;
+        const WS_MAX_RECONNECT_INTERVAL = 30000;
+        let reconnectInterval = WS_RECONNECT_INTERVAL;
+        let isConnecting = false;
+
+        // Cache des éléments DOM
+        const elements = {
+            hostname: document.getElementById('hostname'),
+            hostnameValue: document.getElementById('hostnameValue'),
+            apEnabled: document.getElementById('ap-enabled'),
+            apSSID: document.getElementById('ap-ssid'),
+            apSSIDValue: document.getElementById('ap-ssid-value'),
+            apPassword: document.getElementById('ap-password'),
+            apPasswordValue: document.getElementById('ap-password-value'),
+            staEnabled: document.getElementById('sta-enabled'),
+            staNetworks: document.getElementById('sta-networks'),
+            staSSIDValue: document.getElementById('sta-ssid-value'),
+            staPassword: document.getElementById('sta-password'),
+            staPasswordValue: document.getElementById('sta-password-value'),
+            staDHCP: document.getElementById('sta-dhcp'),
+            staStaticConfig: document.getElementById('sta-static-config'),
+            staIP: document.getElementById('sta-ip'),
+            staIPValue: document.getElementById('sta-ip-value'),
+            staGateway: document.getElementById('sta-gateway'),
+            staGatewayValue: document.getElementById('sta-gateway-value'),
+            staSubnet: document.getElementById('sta-subnet'),
+            staSubnetValue: document.getElementById('sta-subnet-value')
+        };
+
+        // État de scan
+        let isScanning = false;
+
+        // Initialisation
+        async function init() {
+            if (window.location.protocol === 'file:') {
+                const serverAvailable = await checkServerConnection();
+                if (!serverAvailable) {
+                    alert('Impossible de se connecter au serveur de développement. Vérifiez que le serveur est bien lancé sur le port 3001');
+                    return;
+                }
+            }
+            
+            await loadConfiguration();
+            connectWebSocket();
+            setupEventListeners();
+        }
+
+        // Configuration des écouteurs d'événements
+        function setupEventListeners() {
+            elements.staDHCP.addEventListener('change', toggleStaticConfig);
+        }
+
+        // Helper pour les appels API modifié
+        async function callApi(endpoint, options = {}) {
+            try {
+                const urlString = `${BASE_URL}${endpoint}`;
+                console.log('Calling API:', urlString);
+
+                const response = await fetch(urlString, {
+                    ...options,
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json',
+                        // Ajout des en-têtes CORS pour le développement local
+                        ...(window.location.protocol === 'file:' ? {
+                            'Origin': 'null',
+                            'Access-Control-Request-Method': options.method || 'GET',
+                        } : {}),
+                        ...(options.headers || {})
+                    },
+                    // Ajout des options CORS
+                    mode: window.location.protocol === 'file:' ? 'cors' : 'same-origin',
+                    credentials: window.location.protocol === 'file:' ? 'omit' : 'same-origin'
+                });
+
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            } catch (error) {
+                // Amélioration de la gestion des erreurs
+                if (error.name === 'TypeError' && error.message === 'Failed to fetch') {
+                    console.error('Erreur de connexion au serveur. Vérifiez que le serveur est bien lancé sur le port 3001');
+                }
+                console.error('API call error:', error);
+                throw error;
+            }
+        }
+
+        // Modification des fonctions pour utiliser le même format de requêtes
+        async function loadConfiguration() {
+            try {
+                const config = await callApi(API_ENDPOINTS.CONFIG);
+                updateUI(config);
+            } catch (error) {
+                console.error('Error loading configuration:', error);
+            }
+        }
+
+        async function updateHostname() {
+            const hostname = elements.hostname.value;
+            if (!hostname) return;
+
+            try {
+                const result = await callApi(API_ENDPOINTS.HOSTNAME, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ hostname })
+                });
+                
+                if (result.success) {
+                    elements.hostnameValue.textContent = hostname;
+                }
+            } catch (error) {
+                console.error('Error updating hostname:', error);
+            }
+        }
+
+        // Modification de la fonction connectWebSocket
+        function connectWebSocket() {
+            if (isConnecting || ws?.readyState === WebSocket.CONNECTING) return;
+
+            isConnecting = true;
+            console.log('Tentative de connexion WebSocket à:', WS_URL);
+            ws = new WebSocket(WS_URL);
+            setupWebSocketHandlers();
+        }
+
+        function setupWebSocketHandlers() {
+            ws.onopen = () => {
+                console.log('WebSocket connecté');
+                isConnecting = false;
+                reconnectInterval = WS_RECONNECT_INTERVAL;
+            };
+
+            ws.onclose = () => {
+                console.log('WebSocket déconnecté');
+                handleWebSocketDisconnection();
+            };
+
+            ws.onerror = (error) => {
+                console.error('Erreur WebSocket:', error);
+                handleWebSocketError();
+            };
+
+            ws.onmessage = (event) => {
+                handleWebSocketMessage(event);
+            };
+        }
+
+        function handleWebSocketDisconnection() {
+            isConnecting = false;
+            ws = null;
+
+            setTimeout(() => {
+                connectWebSocket();
+            }, reconnectInterval);
+
+            reconnectInterval = Math.min(
+                reconnectInterval * 2,
+                WS_MAX_RECONNECT_INTERVAL
+            );
+        }
+
+        function handleWebSocketError() {
+            isConnecting = false;
+            if (ws) {
+                ws.close();
+                ws = null;
+            }
+        }
+
+        function handleWebSocketMessage(event) {
+            try {
+                const data = JSON.parse(event.data);
+                if (data.type === 'wifi_manager') {
+                    // Mise à jour du statut de connexion
+                    if (data.data.status) {
+                        updateConnectionStatus(data.data.status);
+                    }
+                    
+                    // Mise à jour de la configuration si présente
+                    if (data.data.config) {
+                        updateUI({
+                            hostname: data.data.config.hostname,
+                            ap: {
+                                ssid: data.data.config.ap.ssid,
+                                password: data.data.config.ap.password
+                            },
+                            sta: {
+                                ssid: data.data.config.sta.ssid,
+                                password: data.data.config.sta.password,
+                                dhcp: data.data.config.sta.dhcp,
+                                ip: data.data.config.sta.ip,
+                                gateway: data.data.config.sta.gateway,
+                                subnet: data.data.config.sta.subnet
+                            }
+                        });
+                    }
+                }
+            } catch (error) {
+                console.error('Erreur lors du parsing du message WebSocket:', error);
+            }
+        }
+
+        // Mise à jour de l'interface
+        function updateUI(config) {
+            // Hostname
+            elements.hostnameValue.textContent = config.hostname;
+            elements.hostname.value = config.hostname;
+
+            // Access Point
+            elements.apEnabled.checked = config.ap.enabled;
+            elements.apSSIDValue.textContent = config.ap.ssid;
+            elements.apSSID.value = config.ap.ssid;
+            elements.apPassword.value = config.ap.password;
+            elements.apPasswordValue.textContent = config.ap.password;
+
+            // Station
+            elements.staEnabled.checked = config.sta.enabled;
+            elements.staSSIDValue.textContent = config.sta.ssid;
+            elements.staPassword.value = config.sta.password;
+            elements.staPasswordValue.textContent = config.sta.password;
+
+            // Configuration statique
+            elements.staDHCP.checked = config.sta.dhcp;
+            elements.staStaticConfig.style.display = config.sta.dhcp ? 'none' : 'block';
+            if (!config.sta.dhcp) {
+                elements.staIPValue.textContent = config.sta.ip;
+                elements.staIP.value = config.sta.ip;
+                elements.staGatewayValue.textContent = config.sta.gateway;
+                elements.staGateway.value = config.sta.gateway;
+                elements.staSubnetValue.textContent = config.sta.subnet;
+                elements.staSubnet.value = config.sta.subnet;
+            }
+        }
+
+        async function updateAPConfig() {
+            const config = {
+                enabled: elements.apEnabled.checked,
+                ssid: elements.apSSID.value,
+                password: elements.apPassword.value
+            };
+
+            try {
+                const result = await callApi(API_ENDPOINTS.AP_CONFIG, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                if (result.success) {
+                    elements.apSSIDValue.textContent = config.ssid;
+                    elements.apPasswordValue.textContent = config.password;
+                    
+                    // Mise à jour immédiate du statut en fonction de enabled
+                    if (!config.enabled) {
+                        updateStatusIndicator('ap', 'disabled');
+                    } else {
+                        updateStatusIndicator('ap', 'connecting');
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating AP config:', error);
+                elements.apEnabled.checked = !config.enabled;
+            }
+        }
+
+        async function scanNetworks() {
+            if (isScanning) return;
+
+            isScanning = true;
+            elements.staNetworks.disabled = true;
+            elements.staNetworks.innerHTML = '<option value="">Scanning...</option>';
+
+            try {
+                const result = await callApi(API_ENDPOINTS.NETWORKS);
+                if (result.networks) {
+                    updateNetworksList(result.networks);
+                }
+            } catch (error) {
+                console.error('Error scanning networks:', error);
+                elements.staNetworks.innerHTML = '<option value="">Scan failed</option>';
+            } finally {
+                isScanning = false;
+                elements.staNetworks.disabled = false;
+            }
+        }
+
+        function updateNetworksList(networks) {
+            let html = '<option value="">Select network...</option>';
+            networks.sort((a, b) => b.rssi - a.rssi)
+                   .forEach(network => {
+                        html += `<option value="${network.ssid}">
+                                ${network.ssid} (${network.rssi}dBm)
+                                </option>`;
+                   });
+            elements.staNetworks.innerHTML = html;
+        }
+
+        async function updateSTAConfig() {
+            const selectedNetwork = elements.staNetworks.value;
+            const currentSSID = elements.staSSIDValue.textContent;
+            
+            if (!selectedNetwork && !currentSSID) {
+                console.error('Please select a network');
+                return;
+            }
+
+            const config = {
+                enabled: elements.staEnabled.checked,
+                ssid: selectedNetwork || currentSSID,
+                password: elements.staPassword.value,
+                dhcp: elements.staDHCP.checked
+            };
+
+            // Si DHCP est désactivé, gérer la configuration IP
+            if (!config.dhcp) {
+                const ip = elements.staIP.value.trim();
+                const gateway = elements.staGateway.value.trim();
+                const subnet = elements.staSubnet.value.trim();
+
+                // Validation de l'IP (obligatoire si DHCP off)
+                if (!ip) {
+                    console.error('IP address is required when DHCP is disabled');
+                    return;
+                }
+
+                // Validation du format IP
+                const ipRegex = /^(\d{1,3}\.){3}\d{1,3}$/;
+                if (!ipRegex.test(ip)) {
+                    console.error('Invalid IP address format');
+                    return;
+                }
+
+                // Ajouter l'IP à la configuration
+                config.ip = ip;
+
+                // Si gateway OU subnet est rempli, les deux doivent être remplis et valides
+                if (gateway || subnet) {
+                    if (!gateway || !subnet) {
+                        console.error('Both Gateway and Subnet must be specified together');
+                        return;
+                    }
+
+                    if (!ipRegex.test(gateway)) {
+                        console.error('Invalid gateway format');
+                        return;
+                    }
+
+                    if (!ipRegex.test(subnet)) {
+                        console.error('Invalid subnet format');
+                        return;
+                    }
+
+                    // Ajouter gateway et subnet uniquement s'ils sont tous les deux valides
+                    config.gateway = gateway;
+                    config.subnet = subnet;
+                }
+            }
+
+            try {
+                const result = await callApi(API_ENDPOINTS.STA_CONFIG, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(config)
+                });
+
+                if (result.success) {
+                    elements.staSSIDValue.textContent = config.ssid;
+                    elements.staPasswordValue.textContent = config.password;
+                    elements.staNetworks.value = '';
+
+                    if (!config.dhcp) {
+                        elements.staIPValue.textContent = config.ip;
+                        elements.staGatewayValue.textContent = config.gateway;
+                        elements.staSubnetValue.textContent = config.subnet;
+                    }
+
+                    // Mise à jour immédiate du statut en fonction de enabled
+                    if (!config.enabled) {
+                        updateStatusIndicator('sta', 'disabled');
+                    } else {
+                        updateStatusIndicator('sta', 'connecting');
+                    }
+                }
+            } catch (error) {
+                console.error('Error updating STA config:', error);
+                elements.staEnabled.checked = !config.enabled;
+            }
+        }
+
+        function toggleStaticConfig() {
+            elements.staStaticConfig.style.display = 
+                elements.staDHCP.checked ? 'none' : 'block';
+        }
+
+        function updateStatusIndicator(type, status) {
+            // Sélectionner le bon élément de statut en fonction du type (ap ou sta)
+            const statusContainer = document.querySelector(`.${type}-status`);
+            if (!statusContainer) return;
+
+            const dot = statusContainer.querySelector('.status-dot');
+            const text = statusContainer.querySelector('.status-text');
+            const loading = statusContainer.querySelector('.loading');
+            
+            if (!dot || !text) return;
+
+            // Retirer toutes les classes de statut
+            dot.classList.remove('connected', 'disconnected', 'disabled', 'connecting');
+            dot.classList.add(status);
+
+            // Mettre à jour le texte
+            text.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            
+            // Gérer l'indicateur de chargement
+            if (loading) {
+                loading.classList.toggle('hidden', status !== 'connecting');
+            }
+        }
+
+        function updateConnectionStatus(status) {
+            // Mise à jour du statut AP
+            if (status.ap) {
+                const apStatus = !status.ap.enabled ? 'disabled' :
+                                (status.ap.busy && !status.ap.connected) ? 'connecting' :
+                                status.ap.connected ? 'connected' : 'disconnected';
+                
+                const apStatusElement = document.querySelector('.ap-status');
+                if (apStatusElement) {
+                    const dot = apStatusElement.querySelector('.status-dot');
+                    const text = apStatusElement.querySelector('.status-text');
+                    const ip = apStatusElement.querySelector('.status-ip');
+                    const loading = apStatusElement.querySelector('.loading');
+
+                    // Mise à jour du point de statut
+                    dot.classList.remove('connected', 'disconnected', 'disabled', 'connecting');
+                    dot.classList.add(apStatus);
+
+                    // Mise à jour du texte
+                    text.textContent = apStatus.charAt(0).toUpperCase() + apStatus.slice(1);
+
+                    // Mise à jour de l'IP uniquement si connecté
+                    ip.textContent = (status.ap.connected && status.ap.ip) ? status.ap.ip : '';
+
+                    // Gestion du loading basée sur busy
+                    loading.classList.toggle('hidden', !status.ap.busy);
+                }
+            }
+
+            // Mise à jour du statut STA
+            if (status.sta) {
+                const staStatus = !status.sta.enabled ? 'disabled' :
+                                (status.sta.busy && !status.sta.connected) ? 'connecting' :
+                                status.sta.connected ? 'connected' : 'disconnected';
+                
+                const staStatusElement = document.querySelector('.sta-status');
+                if (staStatusElement) {
+                    const dot = staStatusElement.querySelector('.status-dot');
+                    const text = staStatusElement.querySelector('.status-text');
+                    const ip = staStatusElement.querySelector('.status-ip');
+                    const rssi = staStatusElement.querySelector('.status-rssi');
+                    const loading = staStatusElement.querySelector('.loading');
+
+                    // Mise à jour du point de statut
+                    dot.classList.remove('connected', 'disconnected', 'disabled', 'connecting');
+                    dot.classList.add(staStatus);
+
+                    // Mise à jour du texte
+                    text.textContent = staStatus.charAt(0).toUpperCase() + staStatus.slice(1);
+
+                    // Mise à jour de l'IP et RSSI uniquement si connecté
+                    ip.textContent = (status.sta.connected && status.sta.ip) ? status.sta.ip : '';
+                    rssi.textContent = (status.sta.connected && status.sta.rssi) ? `${status.sta.rssi} dBm` : '';
+
+                    // Gestion du loading basée sur busy
+                    loading.classList.toggle('hidden', !status.sta.busy);
+                }
+            }
+        }
+
+        // Démarrage
+        init();
+
+        // Ajout d'une fonction de vérification de la connexion au serveur
+        async function checkServerConnection() {
+            try {
+                await fetch(`${BASE_URL}/api/config`, {
+                    mode: window.location.protocol === 'file:' ? 'cors' : 'same-origin',
+                    headers: {
+                        'Accept': 'application/json'
+                    }
+                });
+                console.log('Serveur accessible');
+                return true;
+            } catch (error) {
+                console.error('Serveur inaccessible:', error);
+                return false;
+            }
+        }
+    </script>
+</body>
+</html> 
