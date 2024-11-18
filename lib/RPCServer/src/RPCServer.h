@@ -100,13 +100,13 @@ private:
 class RPCServer {
 public:
     void begin() {
-        for (const auto& server : _servers) {
+        for (APIServer* server : _servers) {
             server->begin();
         }
     }
 
     void poll() {
-        for (const auto& server : _servers) {
+        for (APIServer* server : _servers) {
             server->poll();
         }
     }
@@ -127,11 +127,11 @@ public:
     }
 
     void broadcast(const String& event, const JsonObject& data) {
-        for (const auto& server : _servers) {
+        for (APIServer* server : _servers) {
             for (const auto& proto : server->getProtocols()) {
                 if (proto.capabilities & APIServer::EVT) {
                     server->pushEvent(event, data);
-                    break; // One broadcast per server is enough
+                    break;
                 }
             }
         }
@@ -141,6 +141,22 @@ public:
         StaticJsonDocument<2048> doc;
         JsonArray methods = doc.to<JsonArray>();
         
+        std::function<void(JsonObject&, const RPCParam&)> addObjectParams = 
+            [&addObjectParams](JsonObject& obj, const RPCParam& param) {
+                if (param.type == "obj" && !param.properties.empty()) {
+                    JsonObject nested = obj.createNestedObject(param.name);
+                    for (const auto& prop : param.properties) {
+                        if (prop.type == "obj") {
+                            addObjectParams(nested, prop);  // Maintenant OK
+                        } else {
+                            nested[prop.name] = prop.required ? prop.type : prop.type + "*";
+                        }
+                    }
+                } else {
+                    obj[param.name] = param.required ? param.type : param.type + "*";
+                }
+            };
+
         for (const auto& [path, method] : _methods) {
             JsonObject methodObj = methods.createNestedObject();
             methodObj["path"] = path;
@@ -162,22 +178,6 @@ public:
                     }
                 }
             }
-
-            // Fonction récursive pour ajouter les paramètres d'un objet
-            auto addObjectParams = [](JsonObject& obj, const RPCParam& param) {
-                if (param.type == "obj" && !param.properties.empty()) {
-                    JsonObject nested = obj.createNestedObject(param.name);
-                    for (const auto& prop : param.properties) {
-                        if (prop.type == "obj") {
-                            addObjectParams(nested, prop);  // Récursion
-                        } else {
-                            nested[prop.name] = prop.required ? prop.type : prop.type + "*";
-                        }
-                    }
-                } else {
-                    obj[param.name] = param.required ? param.type : param.type + "*";
-                }
-            };
 
             // Add parameters as object
             if (!method.requestParams.empty()) {
@@ -219,18 +219,13 @@ public:
         return true;
     }
 
-    // Pour les serveurs alloués dynamiquement
-    void addServer(std::unique_ptr<APIServer>&& server) {
-        _servers.push_back(std::move(server));
-    }
 
-    // Pour les serveurs avec durée de vie garantie (objets globaux)
-    void addServer(APIServer& server) {
-        _servers.push_back(std::unique_ptr<APIServer>(&server, [](APIServer*) {}));
+    void addServer(APIServer* server) {
+        _servers.push_back(server);
     }
 
 private:
-    std::vector<std::unique_ptr<APIServer>> _servers;
+    std::vector<APIServer*> _servers;  // Simple vecteur de pointeurs
     std::map<String, RPCMethod> _methods;
 
     static String toString(RPCMethodType type) {

@@ -8,8 +8,8 @@
 // Déclaration des objets globaux
 WiFiManager wifiManager;  
 RPCServer rpcServer;
-WebAPIServer webServer(rpcServer, 80);  // Création sur la pile
 WiFiManagerAPI wifiManagerAPI(wifiManager, rpcServer);
+WebAPIServer webServer(rpcServer, 80);  // Création sur la pile
 
 void setup() {
     Serial.begin(115200);
@@ -20,7 +20,7 @@ void setup() {
     digitalWrite(LED_BUILTIN, HIGH);
 
     // Ajout du serveur web
-    rpcServer.addServer(webServer);  // Plus simple et plus clair !
+    rpcServer.addServer(&webServer);  // On passe l'adresse
 
     // Vérification du système de fichiers
     if(!SPIFFS.begin(true)) {
