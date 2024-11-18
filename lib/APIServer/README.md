@@ -1,0 +1,370 @@
+APIServer Library Documentation
+===============================
+
+Table of Contents
+-----------------
+
+*   [Architecture](#architecture)
+*   [API Implementation Pattern](#implementation)
+*   [RPC Method Declaration](#methods)
+*   [Auto-Documentation](#documentation)
+*   [Creating a Custom API Server](#custom)
+*   [Implementation Details](#details)
+
+Architecture
+------------
+
+### Overview
+
+The APIServer library addresses a common challenge in embedded systems development: creating maintainable and extensible APIs for IoT devices. Traditional approaches often lead to tightly coupled code where business logic, API endpoints, and communication protocols are intertwined, making it difficult to modify or extend functionality.
+
+### Key Challenges & Features
+
+*   Separation of concerns between business logic and API implementation
+*   Intuitive route/method declaration
+*   Automatic API documentation generation
+*   Real-time event notifications support
+*   Seamless integration with various protocols (HTTP, WebSocket, MQTT, Serial, etc.)
+*   Support for nested objects in parameters and responses
+*   Facilitating the addition of new protocols with minimal changes
+
+### Core Components
+
+*   **APIServer (Master Object)**
+    *   Central manager of API methods
+    *   Registers methods and their handlers
+    *   Manages automatic documentation
+    *   Coordinates different protocol endpoints
+    *   Broadcasts events
+  
+*   **APIEndpoint (Class)**
+    *   Abstract base class for protocol servers
+    *   Wrapper for HTTP, WebSocket, Serial, MQTT...
+    *   Declares supported capabilities (getter, setter, event)
+  
+*   **APIMethod (Structure)**
+    *   Type (GET/SET/EVT)
+    *   Stores parameters, response & callback
+    *   Builder pattern for declaration & auto-documentation
+
+API Implementation Pattern
+--------------------------
+
+### Process
+
+1.  Create dedicated API interface class for each component (e.g. `WiFiManagerAPI.h`)
+2.  Declare API methods, events & handlers (setters/getters with business logic)
+3.  Declare & initialize API objects & endpoints in main
+4.  Poll regularly, or run within a task
+
+**Error handling note:** Parameter type/value checking & error handling is responsibility of business logic API interface. API Server only checks for presence of required parameters.
+
+### Basic Implementation Example
+
+Example of implementing an HTTP APIServer for a WiFi Manager:
+
+wifimanager\_app/ ├── lib/ │ ├── WiFiManager/ │ │ ├── WiFiManager.cpp // Business logic │ │ ├── WiFiManager.h // Business logic │ │ └── WiFiManagerAPI.h // Business logic API interface │ ├── APIServer/ │ │ ├── APIServer.h // Core functionality │ │ ├── APIEndpoint.h // Abstract endpoint implementation │ │ ├── WebAPIEndpoint.h // HTTP/WS server implementation │ │ └── (...) // Custom endpoints implementation └── src/ └── main.cpp // Main app file
+
+**Implementation Note:**  
+Initialization consists of creating stack objects (globals), passing the server to the application API and endpoint, and declaring the methods to use.
+
+#### Main Application Setup: main.cpp
+
+#include "WiFiManager.h"
+#include "WiFiManagerAPI.h"
+#include "APIServer.h"
+#include "WebAPIEndpoint.h"
+
+WiFiManager wifiManager;  
+APIServer apiServer;
+WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
+WebAPIEndpoint webServer(apiServer, 80);
+
+void setup() {
+    apiServer.addEndpoint(&webServer);
+    
+    if (!wifiManager.begin()) {
+       Serial.println("WiFiManager initialization error");
+       while(1) {
+           delay();
+       }
+     }
+     
+     apiServer.begin(); 
+}
+
+void loop() {
+    wifiManager.poll();     // Polls WiFiManager utility
+    wifiManagerAPI.poll();  // Polls WiFiManager API for events
+    apiServer.poll();       // Polls API Server for client requests
+}
+
+#### API Method Registration: WiFiManagerAPI.h
+
+#include "WiFiManager.h"
+#include "APIServer.h"
+
+(...)  
+    // GET wifi/scan
+    \_apiServer.registerMethod("wifi/scan",
+        APIMethodBuilder(APIMethodType::GET, \[this\](const JsonObject\* args, JsonObject& response) {
+            \_wifiManager.getAvailableNetworks(response);
+            return true;
+        })
+        .desc("Scan available WiFi networks")
+        .response("networks", {
+            {"ssid", "string"},
+            {"rssi", "int"},
+            {"encryption", "int"}
+        })
+        .build()
+    );
+    
+    // SET wifi/ap/config
+    \_apiServer.registerMethod("wifi/ap/config",
+        APIMethodBuilder(APIMethodType::SET, \[this\](const JsonObject\* args, JsonObject& response) {
+            bool success = \_wifiManager.setAPConfigFromJson(\*args);
+            response\["success"\] = success;
+            return true;
+        })
+        .desc("Configure Access Point")
+        .param("enabled", "bool")
+        .param("ssid", "string")
+        .param("password", "string")
+        .param("channel", "int")
+        .param("ip", "string", false)       // Optional parameter
+        .param("gateway", "string", false)  // Optional parameter
+        .param("subnet", "string", false)   // Optional parameter
+        .response("success", "bool")
+        .build()
+    );
+    
+    // Other API Methods...
+(...)
+
+**Note:** All initialized endpoints will automatically expose all API methods and autonomously execute client requests. The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver, but this is not important if all API-related tasks are grouped into a task running on the same core as the interfaces (UART, TCP/IP...).
+
+RPC Method Declaration
+----------------------
+
+### Method Types
+
+#### GET Methods
+
+*   Read-only operations
+*   No required request parameters
+*   Always return a response object
+
+rpcServer.registerMethod("wifi/status",
+    RPCMethodBuilder(RPCMethodType::GET, handler)
+        .desc("Get WiFi status")
+        .response("status", "object")
+        .build()
+);
+
+#### SET Methods
+
+*   Modify system state
+*   Require request parameters
+*   Return success/failure response
+
+rpcServer.registerMethod("wifi/sta/config",
+    RPCMethodBuilder(RPCMethodType::SET, handler)
+        .desc("Configure Station mode")
+        .param("ssid", "string")
+        .param("password", "string")
+        .response("success", "bool")
+        .build()
+);
+
+#### EVT Methods (Events)
+
+*   Server-initiated notifications
+*   No request parameters
+*   One-way communication (server to client)
+
+rpcServer.registerMethod("wifi/events",
+    RPCMethodBuilder(RPCMethodType::EVT)
+        .desc("WiFi status updates")
+        .response("status", "object")
+        .build()
+);
+
+### Broadcasting Events
+
+Unlike other methods, events must be called by the application API, for example to signal a status change.
+
+StaticJsonDocument<1024> newState;           // Create new JsonDocument
+JsonObject status = newState\["status"\].to();
+\_wifiManager.getStatusToJson(status);        // Fetch wifi status
+\_apiServer.broadcast("wifi/events", status); // Push event
+
+**Note:** Events are automatically transmitted to all endpoints that implement protocols handling events (Websocket, MQTT for example, defined in classes derived from APIEndpoint).
+
+### Naming Patterns
+
+*   Use hierarchical paths: `component/resource`
+*   Use plural for collections: `clients/list`
+*   Include action in path: `wifi/scan`
+*   Clear & direct methods possible: `get_wifi_status`
+
+### Nested Objects
+
+The library supports nested objects at any depth level through recursive implementation.
+
+#### Nested Object Example
+
+.response("status", {
+    {"wifi", {
+        {"enabled", "bool"},
+        {"rssi", "int"},
+        {"config", {
+            {"ssid", "string"},
+            {"password", "string"}
+        }}
+    }}
+})
+
+Auto-Documentation
+------------------
+
+The library automatically generates comprehensive API documentation in JSON format. This documentation is available through the `/api` endpoint and provides a complete description of all available methods, their expected parameters (required/optional), and response structures.
+
+### Example Generated Documentation
+
+{
+  "methods": \[{
+    "path": "wifi/status",
+    "type": "GET",
+    "desc": "Get WiFi status",
+    "protocols": \["http", "websocket"\],
+    "response": {
+      "ap": {
+        "enabled": "bool",
+        "connected": "bool",
+        "clients": "int",
+        "ip": "string",
+        "rssi": "int"
+      },
+      "sta": {
+        "enabled": "bool",
+        "connected": "bool",
+        "ip": "string",
+        "rssi": "int"
+      }
+    }
+  },
+  {
+    "path": "wifi/sta/config",
+    "type": "SET",
+    "desc": "Configure Station mode",
+    "protocols": \["http"\],
+    "params": {
+      "enabled": "bool",
+      "network": {
+        "ssid": "string",
+        "password": "string",
+        "security": {
+          "type": "string",
+          "certificates": {
+            "ca": "string\*",
+            "client": "string\*"
+          }
+        }
+      }
+    },
+    "response": {
+      "success": "bool",
+      "error": "string\*"
+    }
+  }\]
+}
+
+Creating a Custom API Server
+----------------------------
+
+To create a new protocol server, inherit from the `APIEndpoint` class and implement the virtual methods.
+
+### Custom Endpoint Example
+
+class MyCustomEndpoint : public APIEndpoint {
+public:
+    MyCustomEndpoint(APIServer& apiServer, uint16\_t port) 
+    : APIEndpoint(myServer) {
+        addProtocol("custom", GET | SET | EVT);
+    }
+
+    void begin() override {   // Initialization
+        \_setupAPIRoutes();     // API routes & event setup
+        \_server.begin();      // Endpoint server start
+    }
+
+    void poll() override {    
+        \_processEventQueue(); // Periodic event queue processing
+    }
+
+    void handleGet(const String& path, const JsonObject\* args, 
+    JsonObject& response) override {
+         (...) // GET request handling
+    }
+
+    void handleSet(const String& path, const JsonObject& args, 
+    JsonObject& response) override {
+         (...) // SET request handling
+    }
+
+    void pushEvent(const String& event, const JsonObject& data) override {
+       (...) // Queuing events received from business logic
+    }
+
+private:
+    MyCustomServer \_server;
+    std::queue \_eventQueue;
+    
+    void \_setupAPIRoutes() {
+       (...) // Register API methods & events with server
+    }
+    
+    void \_processEventQueue() {
+       (...) // Broadcast events to clients
+    }
+};
+
+For more details on server implementation, see existing implementations (ESPAsyncWebserial, MQTT, Serial...).
+
+Implementation Details
+----------------------
+
+### Memory Management
+
+*   Using `StaticJsonDocument` for JSON buffers
+*   Default size: 2048 bytes for documentation
+*   Fixed stack allocation, no dynamic memory allocation during runtime
+*   Vector sizes are determined at compile time
+
+**Memory Considerations:**
+
+*   Be mindful of stack size when using deeply nested objects
+*   Monitor memory usage with maximum expected payload sizes
+*   Consider static allocation limits on your target platform
+
+### Thread Safety
+
+*   Mutex can be implemented if needed
+*   Limited queue size (10 messages)
+*   Minimum interval between notifications (50ms)
+
+**Implementation Note:**  
+The current implementation prioritizes simplicity and efficiency over thread safety. If you need thread-safe operation, consider implementing appropriate synchronization mechanisms.
+
+### Parameter Validation
+
+Parameter validation is intentionally simple:
+
+*   Verification of required parameters presence
+*   No type validation (handled by business logic)
+*   No recursive validation of nested objects (level 1 verification: object)
+*   Invalid configurations cause compilation errors
+
+**Design Philosophy:**  
+The library focuses on providing a robust foundation while allowing business logic to implement specific validation requirements. This separation of concerns ensures flexibility while maintaining code clarity.

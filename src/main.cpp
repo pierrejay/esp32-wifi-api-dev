@@ -2,14 +2,14 @@
 #include <SPIFFS.h>
 #include "WiFiManager.h"
 #include "WiFiManagerAPI.h"
-#include "RPCServer.h"
-#include "WebAPIServer.h"
+#include "APIServer.h"
+#include "WebAPIEndpoint.h"
 
 // Déclaration des objets globaux
 WiFiManager wifiManager;  
-RPCServer rpcServer;
-WiFiManagerAPI wifiManagerAPI(wifiManager, rpcServer);
-WebAPIServer webServer(rpcServer, 80);  // Création sur la pile
+APIServer apiServer;
+WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
+WebAPIEndpoint webServer(apiServer, 80);  // Création sur la pile
 
 void setup() {
     Serial.begin(115200);
@@ -20,7 +20,7 @@ void setup() {
     digitalWrite(LED_BUILTIN, HIGH);
 
     // Ajout du serveur web
-    rpcServer.addServer(&webServer);  // On passe l'adresse
+    apiServer.addEndpoint(&webServer);  // On passe l'adresse
 
     // Vérification du système de fichiers
     if(!SPIFFS.begin(true)) {
@@ -40,8 +40,8 @@ void setup() {
         }
     }
 
-    // Démarrage du serveur RPC
-    rpcServer.begin();  // Changé de apiServer à rpcServer
+    // Démarrage du serveur API
+    apiServer.begin(); 
 
     Serial.println("Système initialisé");
     digitalWrite(LED_BUILTIN, LOW);
@@ -50,5 +50,5 @@ void setup() {
 void loop() {
     wifiManager.poll();
     wifiManagerAPI.poll();
-    rpcServer.poll();  // Changé de apiServer à rpcServer
+    apiServer.poll(); 
 }

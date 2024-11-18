@@ -1,18 +1,18 @@
-#ifndef WEB_API_SERVER_H
-#define WEB_API_SERVER_H
+#ifndef WEBAPIENDPOINT_H
+#define WEBAPIENDPOINT_H
 
-#include "RPCServer.h"
 #include "APIServer.h"
+#include "APIEndpoint.h"
 #include <ESPAsyncWebServer.h>
 #include <AsyncWebSocket.h>
 #include <AsyncJson.h>
 #include <SPIFFS.h>
 #include <queue>
 
-class WebAPIServer : public APIServer {
+class WebAPIEndpoint : public APIEndpoint {
 public:
-    WebAPIServer(RPCServer& rpcServer, uint16_t port) 
-        : APIServer(rpcServer)
+    WebAPIEndpoint(APIServer& apiServer, uint16_t port) 
+        : APIEndpoint(apiServer)
         , _server(port)
         , _ws("/ws")
         , _lastUpdate(0) 
@@ -27,7 +27,7 @@ public:
         setupWebSocketEvents();
     }
     
-    ~WebAPIServer() {
+    ~WebAPIEndpoint() {
         if (_queueMutex != NULL) {
             vSemaphoreDelete(_queueMutex);
         }
@@ -42,7 +42,7 @@ public:
     void poll() override {
         unsigned long now = millis();
         if (now - _lastUpdate > WS_POLL_INTERVAL) {
-            processNotificationQueue();
+            processWsQueue();
             _lastUpdate = now;
         }
     }
@@ -67,10 +67,10 @@ public:
         serializeJson(doc, message);
         
         if (xSemaphoreTake(_queueMutex, portMAX_DELAY) == pdTRUE) {
-            if (_messageQueue.size() >= WS_QUEUE_SIZE) {
-                _messageQueue.pop();
+            if (_wsQueue.size() >= WS_QUEUE_SIZE) {
+                _wsQueue.pop();
             }
-            _messageQueue.push(message);
+            _wsQueue.push(message);
             xSemaphoreGive(_queueMutex);
         }
     }
@@ -79,12 +79,12 @@ private:
     AsyncWebServer _server;
     AsyncWebSocket _ws;
     unsigned long _lastUpdate;
-    std::queue<String> _messageQueue;
+    std::queue<String> _wsQueue;
     SemaphoreHandle_t _queueMutex;
     
     static constexpr unsigned long WS_POLL_INTERVAL = 50;
     static constexpr size_t WS_QUEUE_SIZE = 10;
-    static constexpr bool WS_RPC_ENABLED = false;  // Désactive explicitement RPC sur WebSocket
+    static constexpr bool WS_API_ENABLED = false;  // Désactive explicitement les appels API sur WebSocket
 
     void setupWebSocketEvents() {
         _ws.onEvent([this](AsyncWebSocket* server, AsyncWebSocketClient* client, 
@@ -98,15 +98,15 @@ private:
     void setupAPIRoutes() {
         // Route pour la documentation API
         _server.on("/api", HTTP_GET, [this](AsyncWebServerRequest *request) {
-            auto methods = _rpcServer.getAPIDoc();
+            auto methods = _apiServer.getAPIDoc();
             String response;
             serializeJson(methods, response);
             request->send(200, "application/json", response);
         });
 
         // Routes pour les méthodes GET
-        for (const auto& [path, method] : _rpcServer.getMethods()) {
-            if (method.type == RPCMethodType::GET) {
+        for (const auto& [path, method] : _apiServer.getMethods()) {
+            if (method.type == APIMethodType::GET) {
                 _server.on(("/api/" + path).c_str(), HTTP_GET, 
                     [this, path](AsyncWebServerRequest *request) {
                         handleHTTPGet(request, path);
@@ -115,8 +115,8 @@ private:
         }
 
         // Routes pour les méthodes SET
-        for (const auto& [path, method] : _rpcServer.getMethods()) {
-            if (method.type == RPCMethodType::SET) {
+        for (const auto& [path, method] : _apiServer.getMethods()) {
+            if (method.type == APIMethodType::SET) {
                 auto handler = new AsyncCallbackJsonWebHandler(
                     ("/api/" + path).c_str(),
                     [this, path](AsyncWebServerRequest* request, JsonVariant& json) {
@@ -139,7 +139,7 @@ private:
         StaticJsonDocument<1024> doc;
         JsonObject response = doc.to<JsonObject>();
         
-        if (_rpcServer.executeMethod(path, nullptr, response)) {
+        if (_apiServer.executeMethod(path, nullptr, response)) {
             String responseStr;
             serializeJson(doc, responseStr);
             request->send(200, "application/json", responseStr);
@@ -153,7 +153,7 @@ private:
         StaticJsonDocument<1024> doc;
         JsonObject response = doc.to<JsonObject>();
         
-        if (_rpcServer.executeMethod(path, &args, response)) {
+        if (_apiServer.executeMethod(path, &args, response)) {
             String responseStr;
             serializeJson(doc, responseStr);
             request->send(200, "application/json", responseStr);
@@ -163,7 +163,7 @@ private:
     }
 
     void handleWebSocketMessage(void* arg, uint8_t* data, size_t len) {
-        if (!WS_RPC_ENABLED) return;
+        if (!WS_API_ENABLED) return;
         
         AwsFrameInfo* info = (AwsFrameInfo*)arg;
         if (info->final && info->index == 0 && info->len == len && 
@@ -175,14 +175,14 @@ private:
             if (!error) {
                 JsonObject request = doc.as<JsonObject>();
                 if (request.containsKey("method")) {
-                    handleRPCRequest(request);
+                    handleAPIRequest(request);
                 }
             }
         }
     }
 
-    void handleRPCRequest(const JsonObject& request) {
-        if (!WS_RPC_ENABLED) return;
+    void handleAPIRequest(const JsonObject& request) {
+        if (!WS_API_ENABLED) return;
         
         StaticJsonDocument<1024> doc;
         JsonObject response = doc.to<JsonObject>();
@@ -190,18 +190,18 @@ private:
         String method = request["method"].as<String>();
         JsonObject params = request["params"].as<JsonObject>();
         
-        if (_rpcServer.executeMethod(method, &params, response)) {
+        if (_apiServer.executeMethod(method, &params, response)) {
             String responseStr;
             serializeJson(doc, responseStr);
             _ws.textAll(responseStr);
         }
     }
 
-    void processNotificationQueue() {
+    void processWsQueue() {
         if (xSemaphoreTake(_queueMutex, portMAX_DELAY) == pdTRUE) {
-            while (!_messageQueue.empty()) {
-                String message = _messageQueue.front();
-                _messageQueue.pop();
+            while (!_wsQueue.empty()) {
+                String message = _wsQueue.front();
+                _wsQueue.pop();
                 _ws.textAll(message);
             }
             xSemaphoreGive(_queueMutex);
@@ -209,4 +209,4 @@ private:
     }
 };
 
-#endif // WEB_API_SERVER_H
+#endif // WEBAPIENDPOINT_H

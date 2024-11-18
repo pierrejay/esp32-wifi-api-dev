@@ -1,15 +1,15 @@
-#ifndef WIFI_MANAGER_API_H
-#define WIFI_MANAGER_API_H
+#ifndef WIFIMANAGERAPI_H
+#define WIFIMANAGERAPI_H
 
 #include "WiFiManager.h"
-#include "RPCServer.h"
+#include "APIServer.h"
 #include <ArduinoJson.h>
 
 class WiFiManagerAPI {
 public:
-    WiFiManagerAPI(WiFiManager& wifiManager, RPCServer& rpcServer) 
+    WiFiManagerAPI(WiFiManager& wifiManager, APIServer& apiServer) 
         : _wifiManager(wifiManager)
-        , _rpcServer(rpcServer)
+        , _apiServer(apiServer)
         , _lastNotification(0) 
     {
         // S'abonner aux changements d'état
@@ -36,15 +36,15 @@ public:
 
 private:
     WiFiManager& _wifiManager;
-    RPCServer& _rpcServer;
+    APIServer& _apiServer;
     unsigned long _lastNotification;
     StaticJsonDocument<2048> _previousState;
     static constexpr unsigned long NOTIFICATION_INTERVAL = 500;
 
     void registerMethods() {
         // GET wifi/status
-        _rpcServer.registerMethod("wifi/status", 
-            RPCMethodBuilder(RPCMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+        _apiServer.registerMethod("wifi/status", 
+            APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
                 _wifiManager.getStatusToJson(response);
                 return true;
             })
@@ -66,8 +66,8 @@ private:
         );
 
         // GET wifi/config
-        _rpcServer.registerMethod("wifi/config",
-            RPCMethodBuilder(RPCMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+        _apiServer.registerMethod("wifi/config",
+            APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
                 _wifiManager.getConfigToJson(response);
                 return true;
             })
@@ -76,7 +76,7 @@ private:
                 {"enabled", "bool"},
                 {"ssid", "string"},
                 {"password", "string"},
-       {"channel", "int"},
+                {"channel", "int"},
                 {"ip", "string"},
                 {"gateway", "string"},
                 {"subnet", "string"}
@@ -94,8 +94,8 @@ private:
         );
 
         // GET wifi/scan
-        _rpcServer.registerMethod("wifi/scan",
-            RPCMethodBuilder(RPCMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+        _apiServer.registerMethod("wifi/scan",
+            APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
                 _wifiManager.getAvailableNetworks(response);
                 return true;
             })
@@ -109,8 +109,8 @@ private:
         );
 
         // SET wifi/ap/config
-        _rpcServer.registerMethod("wifi/ap/config",
-            RPCMethodBuilder(RPCMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+        _apiServer.registerMethod("wifi/ap/config",
+            APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
                 bool success = _wifiManager.setAPConfigFromJson(*args);
                 response["success"] = success;
                 return true;
@@ -128,8 +128,8 @@ private:
         );
 
         // SET wifi/sta/config
-        _rpcServer.registerMethod("wifi/sta/config",
-            RPCMethodBuilder(RPCMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+        _apiServer.registerMethod("wifi/sta/config",
+            APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
                 bool success = _wifiManager.setSTAConfigFromJson(*args);
                 response["success"] = success;
                 return true;
@@ -147,8 +147,8 @@ private:
         );
 
         // SET wifi/hostname
-        _rpcServer.registerMethod("wifi/hostname",
-            RPCMethodBuilder(RPCMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+        _apiServer.registerMethod("wifi/hostname",
+            APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
                 if (!(*args)["hostname"].is<const char*>()) {
                     return false;
                 }
@@ -163,8 +163,8 @@ private:
         );
 
         // EVT wifi/events
-        _rpcServer.registerMethod("wifi/events",
-            RPCMethodBuilder(RPCMethodType::EVT)
+        _apiServer.registerMethod("wifi/events",
+            APIMethodBuilder(APIMethodType::EVT)
             .desc("WiFi status and configuration updates")
             .response("status", {
                 {"ap", {
@@ -215,7 +215,7 @@ private:
         bool changed = (force || _previousState.isNull() || newState != _previousState);
         
         if (changed) {
-            _rpcServer.broadcast("wifi/events", newState.as<JsonObject>());
+            _apiServer.broadcast("wifi/events", newState.as<JsonObject>());
             _previousState = newState;
             return true;    
         }
@@ -223,4 +223,4 @@ private:
     }
 };
 
-#endif // WIFI_MANAGER_API_H 
+#endif // WIFIMANAGERAPI_H 

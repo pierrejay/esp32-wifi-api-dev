@@ -1,14 +1,14 @@
-#ifndef API_SERVER_H
-#define API_SERVER_H
+#ifndef APIENDPOINT_H
+#define APIENDPOINT_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <vector>
 
 // Forward declaration
-class RPCServer;
+class APIServer;
 
-class APIServer {
+class APIEndpoint {
 public:
     enum Capability {
         GET = 1 << 0,
@@ -21,8 +21,8 @@ public:
         uint8_t capabilities;
     };
 
-    APIServer(RPCServer& rpcServer) : _rpcServer(rpcServer) {}
-    virtual ~APIServer() = default;
+    APIEndpoint(APIServer& apiServer) : _apiServer(apiServer) {}
+    virtual ~APIEndpoint() = default;
 
     virtual void begin() = 0;
     virtual void poll() = 0;
@@ -39,7 +39,7 @@ protected:
     }
 
     std::vector<Protocol> _protocols;
-    RPCServer& _rpcServer;
+    APIServer& _apiServer;
 };
 
-#endif // API_SERVER_H 
+#endif // APIENDPOINT_H 

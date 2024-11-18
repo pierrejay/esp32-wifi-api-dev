@@ -1,117 +1,117 @@
-#ifndef RPC_SERVER_H
-#define RPC_SERVER_H
+#ifndef APISERVER_H
+#define APISERVER_H
 
 #include <Arduino.h>
 #include <ArduinoJson.h>
 #include <vector>
 #include <map>
 #include <memory>
-#include "APIServer.h"
+#include "APIEndpoint.h"
 
 // Forward declarations
-class WebAPIServer;
+class WebAPIEndpoint;
 
-enum class RPCMethodType {
+enum class APIMethodType {
     GET,
     SET,
     EVT
 };
 
-// Structure describing an RPC parameter
-struct RPCParam {
+// Structure describing an API parameter
+struct APIParam {
     String name;
     String type;     // "bool", "int", "float", "string", "obj"
     bool required = true;  // Par défaut à true
-    std::vector<RPCParam> properties;  // Pour les objets imbriqués
+    std::vector<APIParam> properties;  // Pour les objets imbriqués
 
     // Constructeur pour faciliter l'initialisation
-    RPCParam(const String& n, const String& t, bool r = true) 
+    APIParam(const String& n, const String& t, bool r = true) 
         : name(n), type(t), required(r) {}
 
     // Nouveau constructeur pour les objets imbriqués
-    RPCParam(const String& n, const std::initializer_list<RPCParam>& props, bool r = true)
+    APIParam(const String& n, const std::initializer_list<APIParam>& props, bool r = true)
         : name(n), type("obj"), required(r), properties(props) {}
 };
 
-// Structure describing an RPC method
-struct RPCMethod {
+// Structure describing an API method
+struct APIMethod {
     using Handler = std::function<bool(const JsonObject* args, JsonObject& response)>;
     
-    RPCMethodType type;
+    APIMethodType type;
     Handler handler;
     String description;
-    std::vector<RPCParam> requestParams;
-    std::vector<RPCParam> responseParams;
+    std::vector<APIParam> requestParams;
+    std::vector<APIParam> responseParams;
 };
 
-// Builder for RPCMethod
-class RPCMethodBuilder {
+// Builder for APIMethod
+class APIMethodBuilder {
 public:
     // Constructeur normal pour GET/SET
-    RPCMethodBuilder(RPCMethodType type, RPCMethod::Handler handler) {
+    APIMethodBuilder(APIMethodType type, APIMethod::Handler handler) {
         _method.type = type;
         _method.handler = handler;
     }
     
     // Constructeur surchargé pour EVT (pas besoin de handler)
-    RPCMethodBuilder(RPCMethodType type) {
-        if (type != RPCMethodType::EVT) {
+    APIMethodBuilder(APIMethodType type) {
+        if (type != APIMethodType::EVT) {
             return;
         }
         _method.type = type;
         _method.handler = [](const JsonObject*, JsonObject&) { return true; }; // Dummy handler for EVT
     }
     
-    RPCMethodBuilder& desc(const String& description) {
+    APIMethodBuilder& desc(const String& description) {
         _method.description = description;
         return *this;
     }
     
-    RPCMethodBuilder& param(const String& name, const String& type, bool required = true) {
-        _method.requestParams.push_back(RPCParam(name, type, required));
+    APIMethodBuilder& param(const String& name, const String& type, bool required = true) {
+        _method.requestParams.push_back(APIParam(name, type, required));
         return *this;
     }
     
-    RPCMethodBuilder& param(const String& name, const std::initializer_list<RPCParam>& props, bool required = true) {
-        _method.requestParams.push_back(RPCParam(name, props, required));
+    APIMethodBuilder& param(const String& name, const std::initializer_list<APIParam>& props, bool required = true) {
+        _method.requestParams.push_back(APIParam(name, props, required));
         return *this;
     }
     
-    RPCMethodBuilder& response(const String& name, const String& type, bool required = true) {
-        _method.responseParams.push_back(RPCParam(name, type, required));
+    APIMethodBuilder& response(const String& name, const String& type, bool required = true) {
+        _method.responseParams.push_back(APIParam(name, type, required));
         return *this;
     }
     
-    RPCMethodBuilder& response(const String& name, const std::initializer_list<RPCParam>& props, bool required = true) {
-        _method.responseParams.push_back(RPCParam(name, props, required));
+    APIMethodBuilder& response(const String& name, const std::initializer_list<APIParam>& props, bool required = true) {
+        _method.responseParams.push_back(APIParam(name, props, required));
         return *this;
     }
 
     
-    RPCMethod build() {
+    APIMethod build() {
         return _method;
     }
 
 private:
-    RPCMethod _method;
+    APIMethod _method;
 };
 
-// Main RPC Server
-class RPCServer {
+// Main API Server
+class APIServer {
 public:
     void begin() {
-        for (APIServer* server : _servers) {
-            server->begin();
+        for (APIEndpoint* endpoint : _endpoints) {
+            endpoint->begin();
         }
     }
 
     void poll() {
-        for (APIServer* server : _servers) {
-            server->poll();
+        for (APIEndpoint* endpoint : _endpoints) {
+            endpoint->poll();
         }
     }
 
-    void registerMethod(const String& path, const RPCMethod& method) {
+    void registerMethod(const String& path, const APIMethod& method) {
         _methods[path] = method;
     }
 
@@ -127,10 +127,10 @@ public:
     }
 
     void broadcast(const String& event, const JsonObject& data) {
-        for (APIServer* server : _servers) {
-            for (const auto& proto : server->getProtocols()) {
-                if (proto.capabilities & APIServer::EVT) {
-                    server->pushEvent(event, data);
+        for (APIEndpoint* endpoint : _endpoints) {
+            for (const auto& proto : endpoint->getProtocols()) {
+                if (proto.capabilities & APIEndpoint::EVT) {
+                    endpoint->pushEvent(event, data);
                     break;
                 }
             }
@@ -141,8 +141,8 @@ public:
         StaticJsonDocument<2048> doc;
         JsonArray methods = doc.to<JsonArray>();
         
-        std::function<void(JsonObject&, const RPCParam&)> addObjectParams = 
-            [&addObjectParams](JsonObject& obj, const RPCParam& param) {
+        std::function<void(JsonObject&, const APIParam&)> addObjectParams = 
+            [&addObjectParams](JsonObject& obj, const APIParam& param) {
                 if (param.type == "obj" && !param.properties.empty()) {
                     JsonObject nested = obj.createNestedObject(param.name);
                     for (const auto& prop : param.properties) {
@@ -165,13 +165,13 @@ public:
             
             // Add supported protocols
             JsonArray protocols = methodObj.createNestedArray("protocols");
-            for (const auto& server : _servers) {
-                for (const auto& proto : server->getProtocols()) {
+            for (const auto& endpoint : _endpoints) {
+                for (const auto& proto : endpoint->getProtocols()) {
                     uint8_t requiredCap;
                     switch (method.type) {
-                        case RPCMethodType::GET: requiredCap = APIServer::GET; break;
-                        case RPCMethodType::SET: requiredCap = APIServer::SET; break;
-                        case RPCMethodType::EVT: requiredCap = APIServer::EVT; break;
+                        case APIMethodType::GET: requiredCap = APIEndpoint::GET; break;
+                        case APIMethodType::SET: requiredCap = APIEndpoint::SET; break;
+                        case APIMethodType::EVT: requiredCap = APIEndpoint::EVT; break;
                     }
                     if (proto.capabilities & requiredCap) {
                         protocols.add(proto.name);
@@ -200,11 +200,11 @@ public:
     }
 
     // Donne accès aux méthodes enregistrées (en lecture seule)
-    const std::map<String, RPCMethod>& getMethods() const {
+    const std::map<String, APIMethod>& getMethods() const {
         return _methods;
     }
 
-    bool validateParams(const RPCMethod& method, const JsonObject* args) {
+    bool validateParams(const APIMethod& method, const JsonObject* args) {
         if (!args && !method.requestParams.empty()) {
             return false;  // Pas d'arguments alors qu'on en attend
         }
@@ -220,22 +220,22 @@ public:
     }
 
 
-    void addServer(APIServer* server) {
-        _servers.push_back(server);
+    void addEndpoint(APIEndpoint* endpoint) {
+        _endpoints.push_back(endpoint);
     }
 
 private:
-    std::vector<APIServer*> _servers;  // Simple vecteur de pointeurs
-    std::map<String, RPCMethod> _methods;
+    std::vector<APIEndpoint*> _endpoints;  // Simple vecteur de pointeurs
+    std::map<String, APIMethod> _methods;
 
-    static String toString(RPCMethodType type) {
+    static String toString(APIMethodType type) {
         switch (type) {
-            case RPCMethodType::GET: return "GET";
-            case RPCMethodType::SET: return "SET";
-            case RPCMethodType::EVT: return "EVT";
+            case APIMethodType::GET: return "GET";
+            case APIMethodType::SET: return "SET";
+            case APIMethodType::EVT: return "EVT";
             default: return "UNKNOWN";
         }
     }
 };
 
-#endif // RPC_SERVER_H
+#endif // APISERVER_H

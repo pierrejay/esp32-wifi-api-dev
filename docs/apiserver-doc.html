@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>APIServer Documentation</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+        }
+        
+        h1, h2, h3 { 
+            color: #2563eb;
+            margin-top: 2rem;
+        }
+        
+        code {
+            background: #f1f5f9;
+            padding: 0.2em 0.4em;
+            border-radius: 3px;
+            font-size: 0.9em;
+        }
+        
+        pre {
+            background: #f1f5f9;
+            padding: 1rem;
+            border-radius: 8px;
+            overflow-x: auto;
+        }
+        
+        .note {
+            background: #e0f2fe;
+            border-left: 4px solid #2563eb;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .warning {
+            background: #fef2e0;
+            border-left: 4px solid #eb6525;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        .example {
+            background: #f0fdf4;
+            border-left: 4px solid #25eb4f;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1rem 0;
+        }
+        
+        th, td {
+            padding: 0.5rem;
+            border: 1px solid #ddd;
+            text-align: left;
+        }
+        
+        th {
+            background: #f8fafc;
+        }
+    </style>
+</head>
+<body>
+    <h1>APIServer Documentation</h1>
+    
+    <h2>Overview</h2>
+    <p>
+        APIServer is a library designed for ESP32 that simplifies API creation and management. 
+        It provides a clear separation between business logic, API server management, and 
+        protocol-specific endpoints.
+    </p>
+
+    <h2>Key Features</h2>
+    <ul>
+        <li>Protocol-agnostic design (HTTP, WebSocket, etc.)</li>
+        <li>Intuitive route declaration with builder pattern</li>
+        <li>Automatic API documentation</li>
+        <li>Multiple protocol support</li>
+        <li>Push event system</li>
+        <li>Parameter type validation</li>
+    </ul>
+
+    <h2>Architecture</h2>
+    
+    <h3>Main Components</h3>
+    <table>
+        <tr>
+            <th>Component</th>
+            <th>Description</th>
+        </tr>
+        <tr>
+            <td>APIServer</td>
+            <td>Central orchestrator managing methods and endpoints</td>
+        </tr>
+        <tr>
+            <td>APIEndpoint</td>
+            <td>Abstract class for protocol implementations</td>
+        </tr>
+        <tr>
+            <td>WebAPIEndpoint</td>
+            <td>HTTP/WebSocket implementation</td>
+        </tr>
+    </table>
+
+    <h3>Method Types</h3>
+    <table>
+        <tr>
+            <th>Type</th>
+            <th>Usage</th>
+            <th>Example</th>
+        </tr>
+        <tr>
+            <td>GET</td>
+            <td>Read-only</td>
+            <td>Get WiFi status</td>
+        </tr>
+        <tr>
+            <td>SET</td>
+            <td>State modification</td>
+            <td>Configure WiFi</td>
+        </tr>
+        <tr>
+            <td>EVT</td>
+            <td>Push notifications</td>
+            <td>WiFi state changes</td>
+        </tr>
+    </table>
+
+    <h2>Implementation Example with WiFiManager</h2>
+    
+    <h3>1. Initial Setup</h3>
+    <pre>
+// In main.cpp
+#include "WiFiManager.h"
+#include "WiFiManagerAPI.h"
+#include "APIServer.h"
+#include "WebAPIEndpoint.h"
+
+WiFiManager wifiManager;
+APIServer apiServer;
+WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
+WebAPIEndpoint webServer(apiServer, 80);
+
+void setup() {
+    // Add web endpoint
+    apiServer.addEndpoint(&webServer);
+    
+    // Initialization
+    wifiManager.begin();
+    apiServer.begin();
+}
+
+void loop() {
+    wifiManager.poll();
+    wifiManagerAPI.poll();
+    apiServer.poll();
+}</pre>
+
+    <h3>2. API Methods Definition</h3>
+    <pre>
+// In WiFiManagerAPI.h
+void WiFiManagerAPI::registerMethods() {
+    // GET method for status
+    _apiServer.registerMethod("wifi/status", 
+        APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+            _wifiManager.getStatusToJson(response);
+            return true;
+        })
+        .desc("Get WiFi status")
+        .response("ap", {
+            {"enabled", "bool"},
+            {"connected", "bool"},
+            {"clients", "int"}
+        })
+        .response("sta", {
+            {"enabled", "bool"},
+            {"connected", "bool"},
+            {"rssi", "int"}
+        })
+        .build()
+    );
+
+    // SET method for configuration
+    _apiServer.registerMethod("wifi/sta/config",
+        APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+            bool success = _wifiManager.setSTAConfigFromJson(*args);
+            response["success"] = success;
+            return true;
+        })
+        .desc("Configure Station mode")
+        .param("enabled", "bool")
+        .param("ssid", "string")
+        .param("password", "string")
+        .param("dhcp", "bool")
+        .response("success", "bool")
+        .build()
+    );
+
+    // Event for state changes
+    _apiServer.registerMethod("wifi/events",
+        APIMethodBuilder(APIMethodType::EVT)
+        .desc("WiFi status updates")
+        .response("status", {
+            {"connected", "bool"},
+            {"rssi", "int"}
+        })
+        .build()
+    );
+}</pre>
+
+    <h3>3. Event Handling</h3>
+    <pre>
+// In WiFiManagerAPI.h
+void WiFiManagerAPI::sendNotification() {
+    StaticJsonDocument<512> doc;
+    JsonObject status = doc.to<JsonObject>();
+    _wifiManager.getStatusToJson(status);
+    
+    _apiServer.broadcast("wifi/events", status);
+}</pre>
+
+    <div class="example">
+        <h4>HTTP Usage Example</h4>
+        <p>GET /api/wifi/status</p>
+        <pre>
+{
+    "ap": {
+        "enabled": true,
+        "connected": true,
+        "clients": 1
+    },
+    "sta": {
+        "enabled": true,
+        "connected": true,
+        "rssi": -65
+    }
+}</pre>
+    </div>
+
+    <div class="example">
+        <h4>WebSocket Usage Example</h4>
+        <p>Event received on /ws</p>
+        <pre>
+{
+    "event": "wifi/events",
+    "data": {
+        "status": {
+            "connected": true,
+            "rssi": -65
+        }
+    }
+}</pre>
+    </div>
+
+    <h2>Best Practices</h2>
+    
+    <h3>Resource Structure</h3>
+    <ul>
+        <li>Use lowercase paths with hyphens</li>
+        <li>Group related resources (wifi/status, wifi/config)</li>
+        <li>Use nouns instead of verbs</li>
+    </ul>
+
+    <h3>API Design</h3>
+    <ul>
+        <li>Separate business logic from API layer</li>
+        <li>Use consistent response structures</li>
+        <li>Implement proper error handling</li>
+        <li>Document all methods and parameters</li>
+    </ul>
+
+    <div class="warning">
+        <strong>Important:</strong> Always validate input parameters and handle errors appropriately.
+    </div>
+
+    <h2>Conclusion</h2>
+    <p>
+        APIServer provides a solid foundation for building APIs on embedded systems. 
+        Its protocol-agnostic design and clear separation of concerns make it ideal 
+        for IoT applications requiring multiple communication protocols.
+    </p>
+
+</body>
+</html> 
