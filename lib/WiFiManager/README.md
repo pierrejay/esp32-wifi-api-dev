@@ -49,6 +49,12 @@ The WiFiManager library provides a comprehensive solution for managing WiFi conn
 - Tracks clients, IP, and signal strength
 - Provides JSON serialization
 
+#### WiFiManagerAPI (Interface Class)
+- Bridges WiFiManager with APIServer library
+- Registers WiFi management API methods
+- Handles incoming API requests to WiFiManager
+- Broadcasts events to the API Server
+
 ## Quick Start
 
 ```cpp
@@ -63,11 +69,6 @@ void setup() {
         Serial.println("WiFiManager initialization failed!");
         return;
     }
-    
-    // Optional: Register for state changes
-    wifiManager.onStateChange([]() {
-        Serial.println("WiFi state changed");
-    });
 }
 
 void loop() {
@@ -94,13 +95,13 @@ wifiManager.setAPConfigFromJson(apConfig.as<JsonObject>());
 ```
 
 #### AP Configuration Parameters
-- `enabled` (bool): Enable/disable AP mode
-- `ssid` (string): Network name (32 chars max)
-- `password` (string): Network password (8-64 chars)
-- `channel` (int): WiFi channel (1-13)
-- `ip` (string): AP IP address
-- `gateway` (string): Gateway IP
-- `subnet` (string): Subnet mask
+- `enabled (bool)`: Enable/disable AP mode
+- `ssid (string)`: Network name (32 chars max)
+- `password (string)`: Network password (8-64 chars)
+- `channel (int)`: WiFi channel (1-13)
+- `ip (string)`: AP IP address
+- `gateway (string)`: Gateway IP
+- `subnet (string)`: Subnet mask
 
 ### Station (STA) Configuration
 
@@ -119,13 +120,13 @@ wifiManager.setSTAConfigFromJson(staConfig.as<JsonObject>());
 ```
 
 #### STA Configuration Parameters
-- `enabled` (bool): Enable/disable STA mode
-- `ssid` (string): Network to connect to
-- `password` (string): Network password
-- `dhcp` (bool): Use DHCP or static IP
-- `ip` (string, optional): Static IP address
-- `gateway` (string, optional): Gateway IP
-- `subnet` (string, optional): Subnet mask
+- `enabled (bool)`: Enable/disable STA mode
+- `ssid (string)`: Network to connect to
+- `password (string)`: Network password
+- `dhcp (bool)`: Use DHCP or static IP
+- `ip (string, optional)`: Static IP address
+- `gateway (string, optional)`: Gateway IP
+- `subnet (string, optional)`: Subnet mask
 
 ## Status Management
 
@@ -177,21 +178,137 @@ Scan results format:
 }
 ```
 
-## Event System
+## APIServer Integration
 
-### State Change Notifications
+### Overview
+
+The WiFiManager library seamlessly integrates with the APIServer library to provide a RESTful API interface for WiFi management. This integration is handled through the `WiFiManagerAPI` class, which acts as a bridge between the WiFiManager's business logic and the API layer.
+
+### Core Components
+
+#### WiFiManagerAPI Class
+- Handles API method registration
+- Manages state change notifications
+- Provides JSON-based API interface
+- Coordinates event broadcasting
+
+### API Methods
+
+#### GET Methods
+- `wifi/status`: Get current WiFi status
+- `wifi/config`: Get current configuration
+- `wifi/scan`: Scan available networks
+
+#### SET Methods
+- `wifi/ap/config`: Configure Access Point
+- `wifi/sta/config`: Configure Station mode
+- `wifi/hostname`: Set device hostname
+
+#### EVT Methods
+- `wifi/events`: Real-time status and configuration updates
+
+### Implementation Example
 
 ```cpp
-wifiManager.onStateChange([]() {
-    StaticJsonDocument<512> status;
-    JsonObject statusObj = status.to<JsonObject>();
-    wifiManager.getStatusToJson(statusObj);
+#include "WiFiManager.h"
+#include "WiFiManagerAPI.h"
+#include "APIServer.h"
+#include "WebAPIEndpoint.h"
+
+WiFiManager wifiManager;
+APIServer apiServer;
+WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
+WebAPIEndpoint webServer(apiServer, 80);
+
+void setup() {
+    apiServer.addEndpoint(&webServer);
     
-    // Handle status change
-    bool apConnected = statusObj["ap"]["connected"];
-    bool staConnected = statusObj["sta"]["connected"];
-});
+    if (!wifiManager.begin()) {
+        Serial.println("WiFiManager initialization error");
+        while(1) delay(1000);
+    }
+    
+    apiServer.begin();
+}
+
+void loop() {
+    wifiManager.poll();     // Poll WiFiManager
+    wifiManagerAPI.poll();  // Poll API interface
+    apiServer.poll();       // Poll API server
+}
 ```
+
+### API Responses
+
+#### Status Response Format
+```json
+{
+    "ap": {
+        "enabled": true,
+        "connected": true,
+        "clients": 2,
+        "ip": "192.168.4.1",
+        "rssi": 0
+    },
+    "sta": {
+        "enabled": true,
+        "connected": true,
+        "ip": "192.168.1.200",
+        "rssi": -65
+    }
+}
+```
+
+#### Configuration Response Format
+```json
+{
+    "ap": {
+        "enabled": true,
+        "ssid": "ESP32-AP",
+        "password": "********",
+        "channel": 1,
+        "ip": "192.168.4.1",
+        "gateway": "192.168.4.1",
+        "subnet": "255.255.255.0"
+    },
+    "sta": {
+        "enabled": true,
+        "ssid": "HomeNetwork",
+        "password": "********",
+        "dhcp": true,
+        "ip": "",
+        "gateway": "",
+        "subnet": ""
+    }
+}
+```
+
+### Event System Integration
+
+The WiFiManagerAPI automatically broadcasts state changes through the APIServer's event system:
+
+```cpp
+void onStateChange() {
+    StaticJsonDocument<2048> newState;
+    JsonObject status = newState["status"].to<JsonObject>();
+    JsonObject config = newState["config"].to<JsonObject>();
+    
+    // Get current state
+    wifiManager.getStatusToJson(status);
+    wifiManager.getConfigToJson(config);
+    
+    // Broadcast update
+    apiServer.broadcast("wifi/events", newState.as<JsonObject>());
+}
+```
+
+### Implementation Notes
+
+- State changes are broadcast with a minimum interval of 500ms
+- Events are automatically sent to all compatible endpoints (WebSocket, MQTT)
+- Method parameters are validated before execution
+- All responses follow a consistent JSON format
+- API endpoints automatically handle parameter validation
 
 ## Implementation Details
 
@@ -204,33 +321,15 @@ wifiManager.onStateChange([]() {
 
 ### Connection Management
 - Automatic reconnection handling
-- Configurable timeouts:
-  - Connection attempt: 30 seconds
-  - Retry interval: 30 seconds
-  - Status poll interval: 2 seconds
+- Configurable poll & retry interval, timeouts
 
 ### Configuration Persistence
 - Configurations stored in SPIFFS
 - Automatic loading on startup
-- Manual save option available
 - Default configurations if no stored data
 
-### Constants
-```cpp
-// Default configuration
-DEFAULT_AP_SSID = "ESP32-Access-Point"
-DEFAULT_AP_PASSWORD = "12345678"
-DEFAULT_HOSTNAME = "esp32"
-
-// Timing constants
-POLL_INTERVAL = 2000        // Status check interval (ms)
-CONNECTION_TIMEOUT = 30000  // Connection attempt timeout (ms)
-RETRY_INTERVAL = 30000      // Time between connection retries (ms)
-```
-
 ### Validation
-- IP address format validation
-- Subnet mask validation
+- IP address & subnet mask format validation
 - SSID and password length checks
 - Channel number validation (1-13)
 - Configuration completeness checks
@@ -244,9 +343,8 @@ RETRY_INTERVAL = 30000      // Time between connection retries (ms)
 
 ## Important Notes
 
-- Always call `poll()` in your main loop
+- Always call `poll()` in your main loop or in a task to maintain the WiFi connection
 - Password length must be between 8 and 64 characters
 - SSID length must not exceed 32 characters
 - Static IP configuration requires valid IP, gateway, and subnet mask
-- Configuration is automatically saved to SPIFFS
-- The library implements comprehensive validation for all inputs
+- Configuration is automatically saved to SPIFFS upon changes
