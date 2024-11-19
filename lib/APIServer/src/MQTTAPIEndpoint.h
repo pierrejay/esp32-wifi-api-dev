@@ -86,7 +86,7 @@ private:
     static constexpr const char* API_TOPIC = "api/";          // api/<path>
     static constexpr const char* EVENTS_TOPIC = "api/events"; // api/events
 
-    char _clientId[15]; // Taille suffisante pour "ESP32_" + 6 caractères hex
+    char _clientId[15]; // Sufficient size for "ESP32_" + 6 hex characters
 
     void reconnect() {
         if (_mqtt.connected()) return;
@@ -112,7 +112,7 @@ private:
             message += (char)payload[i];
         }
 
-        // Pour une requête GET simple
+        // For a simple GET request
         if (message == "GET") {
             StaticJsonDocument<512> responseDoc;
             JsonObject response = responseDoc.to<JsonObject>();
