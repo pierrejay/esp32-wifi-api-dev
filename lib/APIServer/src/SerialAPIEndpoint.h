@@ -12,6 +12,8 @@ public:
         : APIEndpoint(apiServer)
         , _serial(serial)
         , _lastUpdate(0)
+        , _bufferIndex(0)
+        , _lastReceiveTime(0)
     {
         // Declare supported protocols
         addProtocol("serial", GET | SET | EVT);
@@ -22,20 +24,16 @@ public:
     }
 
     void poll() override {
-        // Process outgoing events queue
         unsigned long now = millis();
+
+        // Process outgoing events queue with polling interval
         if (now - _lastUpdate > SERIAL_POLL_INTERVAL) {
             processEventQueue();
             _lastUpdate = now;
         }
 
-        // Process incoming commands
-        while (_serial.available()) {
-            String line = _serial.readStringUntil('\n');
-            if (line.length() > 0) {
-                handleCommand(line);
-            }
-        }
+        // Traitement du buffer série
+        processSerialInput(now);
     }
 
     void pushEvent(const String& event, const JsonObject& data) override {
@@ -70,8 +68,8 @@ private:
 
     class SerialFormatter {
     public:
-        String formatResponse(const String& path, const JsonObject& response) {
-            String result = path + ":";
+        String formatResponse(const String& method, const String& path, const JsonObject& response) {
+            String result = method + " " + path + ":";
             bool first = true;
             
             std::function<void(const JsonObject&, const String&)> addParams = 
@@ -105,7 +103,7 @@ private:
         }
 
         String formatEvent(const String& event, const JsonObject& data) {
-            return "EVT " + event + ": " + formatResponse("data", data);
+            return "EVT " + event + ": " + formatResponse("EVT", event, data);
         }
 
         SerialCommand parseCommand(const String& line) {
@@ -216,6 +214,10 @@ private:
             
             return response;
         }
+
+        String formatError(const String& method, const String& path, const String& error) {
+            return method + " " + path + ": error=" + error;
+        }
     };
 
     Stream& _serial;
@@ -223,20 +225,72 @@ private:
     std::queue<String> _eventQueue;
     SerialFormatter _formatter;
     
-    static constexpr unsigned long SERIAL_POLL_INTERVAL = 50;
-    static constexpr size_t QUEUE_SIZE = 10;
+    // Circular buffer for serial reading
+    static constexpr size_t SERIAL_BUFFER_SIZE = 512;
+    char _buffer[SERIAL_BUFFER_SIZE];
+    size_t _bufferIndex;
+    unsigned long _lastReceiveTime;
+    
+    static constexpr unsigned long SERIAL_POLL_INTERVAL = 50;    // Polling interval for events
+    static constexpr unsigned long SERIAL_TIMEOUT = 200;         // Timeout in ms
+    static constexpr size_t QUEUE_SIZE = 10;                     // Event message queue size
+
+    void processSerialInput(unsigned long now) {
+        while (_serial.available() && _bufferIndex < SERIAL_BUFFER_SIZE) {
+            char c = _serial.read();
+            
+            // Update the last receive timestamp
+            _lastReceiveTime = now;
+            
+            // Store the character in the buffer
+            _buffer[_bufferIndex++] = c;
+            
+            // If a complete line is found
+            if (c == '\n') {
+                _buffer[_bufferIndex - 1] = '\0';  // Replace \n with \0
+                String line(_buffer);
+                _bufferIndex = 0;  // Reset the buffer
+                
+                // Check if the line starts with ">"
+                if (line.startsWith("> ")) {
+                    handleCommand(line);
+                }
+                return;
+            }
+        }
+
+        // Error handling
+        if (_bufferIndex >= SERIAL_BUFFER_SIZE) {
+            _serial.print("< ");
+            _serial.println(formatError("Error", "", "command too long"));
+            _bufferIndex = 0; 
+            return;
+        }
+
+        // Check timeout if the buffer is not empty
+        if (_bufferIndex > 0 && (now - _lastReceiveTime > SERIAL_TIMEOUT)) {
+            _serial.print("< ");
+            _serial.println(formatError("Error", "", "command timeout"));
+            _bufferIndex = 0;
+        }
+    }
+
+    String formatError(const String& method, const String& path, const String& error) {
+        return _formatter.formatError(method, path, error);
+    }
 
     void handleCommand(const String& line) {
         auto cmd = _formatter.parseCommand(line);
         if (!cmd.valid) {
-            _serial.println("< error: invalid_command");
+            _serial.print("< ");
+            _serial.println(formatError(cmd.method, cmd.path, "invalid command"));
             return;
         }
 
-        // Handle LIST command separately
-        if (cmd.method == "LIST" && cmd.path == "api") {
+        // Handle GET api command separately
+        if (cmd.method == "GET" && cmd.path == "api") {
             auto methods = _apiServer.getAPIDoc();
-            _serial.print("< ");
+            _serial.print("< GET api\n");
             _serial.println(_formatter.formatAPIList(methods));
             return;
         }
@@ -271,9 +325,10 @@ private:
         
         if (_apiServer.executeMethod(cmd.path, cmd.params.empty() ? nullptr : &args, response)) {
             _serial.print("< ");
-            _serial.println(_formatter.formatResponse(cmd.path, response));
+            _serial.println(_formatter.formatResponse(cmd.method, cmd.path, response));
         } else {
-            _serial.println("< error: invalid_request");
+            _serial.print("< ");
+            _serial.println(formatError(cmd.method, cmd.path, "wrong request or parameters"));
         }
     }
 

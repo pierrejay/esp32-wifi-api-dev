@@ -9,7 +9,7 @@ The Serial API protocol provides a simple, human-readable interface for interact
 ```
 > METHOD path[:param1=value1,param2=value2,...]
 ```
-- `>` : Optional prompt character
+- `>` : Mandatory prompt character (commands without '>' prefix are ignored)
 - `METHOD` : `GET`, `SET`, or `LIST`
 - `path` : API endpoint path
 - `:` : Separator for parameters (optional for GET)
@@ -17,12 +17,23 @@ The Serial API protocol provides a simple, human-readable interface for interact
 
 ### Responses (server → client)
 ```
-< path: param1=value1,param2=value2,...
+< METHOD path: param1=value1,param2=value2,...
 ```
 - `<` : Response indicator
+- `METHOD` : Echo of the original command method
 - `path` : Echo of the API endpoint path
 - `:` : Separator for response data
 - Response data uses the same key-value format as commands
+
+### Error Responses
+```
+< METHOD path: error=error_type
+```
+Error types:
+- `invalid command`: Malformed command or timeout
+- `command too long`: Command exceeds maximum length (512 bytes)
+- `wrong request or parameters`: Invalid API path or parameters
+- `command timeout`: Serial read timeout
 
 ### Events (server → client)
 ```
@@ -36,14 +47,15 @@ The Serial API protocol provides a simple, human-readable interface for interact
 Nested objects use dot notation:
 ```
 > SET wifi/sta/config: network.ssid=MyWiFi,network.security.type=WPA2
-< wifi/sta/config: success=true
+< SET wifi/sta/config: success=true
 ```
 
 ## API Documentation
-The `LIST api` command returns a complete description of available endpoints:
+The `GET api` command returns a complete description of available endpoints:
 ```
-> LIST api
-< api.methods:
+> GET api
+< GET api
+api.methods:
   wifi/status:
     type=GET,
     desc=Get WiFi status,
@@ -67,13 +79,13 @@ The `LIST api` command returns a complete description of available endpoints:
 ### GET Request
 ```
 > GET wifi/status
-< wifi/status: ap.enabled=true,ap.connected=false,ap.clients=0
+< GET wifi/status: ap.enabled=true,ap.connected=false,ap.clients=0
 ```
 
 ### SET Request
 ```
 > SET wifi/ap/config: enabled=true,ssid=MyAP,password=12345678
-< wifi/ap/config: success=true
+< SET wifi/ap/config: success=true
 ```
 
 ### Event Notification
@@ -81,11 +93,19 @@ The `LIST api` command returns a complete description of available endpoints:
 < EVT wifi/events: data.status.connected=true,data.ip=192.168.1.100
 ```
 
-## Error Handling
-Errors are indicated with an error message:
+### Error Examples
 ```
-< error: invalid_command
-< error: invalid_request
+> (invalid command...)
+< ERROR: error=invalid command
+
+> GET wifi/invalid/path
+< GET wifi/invalid/path: error=wrong request or parameters
+
+> (very long command...)
+< ERROR: error=command too long
+
+> (timeout occurs...)
+< ERROR: error=command timeout
 ```
 
 ## Implementation Notes
@@ -97,12 +117,15 @@ Errors are indicated with an error message:
 - Automatic parameter conversion (bool, int, float, string)
 - Event queue for asynchronous notifications
 - Pretty-printed API documentation
+- Robust command parsing with timeout detection
 
 ### Limitations
-- Maximum line length: 512 bytes
+- Maximum command length: 512 bytes
 - Queue size for events: 10 messages
-- Polling interval: 50ms
+- Event polling interval: 50ms
+- Command timeout: 200ms
 - Serial must be initialized before endpoint (typically in setup())
+- Commands must start with '>' to be processed
 
 ### Usage
 ```cpp

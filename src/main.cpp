@@ -4,6 +4,7 @@
 #include "WiFiManagerAPI.h"
 #include "APIServer.h"
 #include "WebAPIEndpoint.h"
+#include "result.h"
 
 // Declaration of global objects
 WiFiManager wifiManager;                                    // WiFiManager instance
