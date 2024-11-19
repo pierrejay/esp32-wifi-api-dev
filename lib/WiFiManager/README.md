@@ -248,8 +248,14 @@ Events will be notified following this layout:
 {
     "event": "wifi/events",
     "data": {
-        "status": {...},
-        "config": {...}
+        "status": {
+            "ap": {...},
+            "sta": {...}
+        },
+        "config": {
+            "ap": {...},
+            "sta": {...}
+        }
     }
 }
 ```
