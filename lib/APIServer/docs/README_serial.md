@@ -120,7 +120,7 @@ api.methods:
 - Command parsing with timeout detection
 
 ### Limitations
-- Maximum command length: 2048 bytes
+- Maximum command length: 4096 bytes
 - Queue size for events: 10 messages
 - Serial must be initialized before endpoint (typically in setup())
 - Commands must start with '>' to be processed

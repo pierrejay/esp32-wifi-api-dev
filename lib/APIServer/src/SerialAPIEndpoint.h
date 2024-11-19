@@ -226,7 +226,7 @@ private:
     SerialFormatter _formatter;
     
     // Circular buffer for serial reading
-    static constexpr size_t SERIAL_BUFFER_SIZE = 2048;
+    static constexpr size_t SERIAL_BUFFER_SIZE = 4096;
     char _buffer[SERIAL_BUFFER_SIZE];
     size_t _bufferIndex;
     unsigned long _lastReceiveTime;
