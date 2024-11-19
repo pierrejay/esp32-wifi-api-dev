@@ -128,7 +128,8 @@ api.methods:
 - Event/serial polling interval: 5ms by default
 
 ### Tips
-In case of communication error, send any character (followed by the end of line char "\n") to flush the buffer.
+- In case of communication error, send any character (followed by the end of line char "\n") to flush the buffer.
+- Use 115200 baud rate when possible (most drivers & USB dongles support it).
 
 ### Usage
 ```cpp
