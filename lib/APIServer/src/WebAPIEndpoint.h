@@ -43,16 +43,6 @@ public:
         }
     }
 
-    void handleGet(const String& path, const JsonObject* args, JsonObject& response) override {
-        // Not used in async web server (handled by handleHTTPGet)
-        return;
-    }
-
-    void handleSet(const String& path, const JsonObject& args, JsonObject& response) override {
-        // Not used in async web server (handled by handleHTTPSet)
-        return;
-    }
-
     void pushEvent(const String& event, const JsonObject& data) override {
         StaticJsonDocument<1024> doc;
         JsonObject eventObj = doc.to<JsonObject>();

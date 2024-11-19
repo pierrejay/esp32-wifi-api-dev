@@ -297,47 +297,93 @@ To create a new protocol server, inherit from the `APIEndpoint` class and implem
 class MyCustomEndpoint : public APIEndpoint {
 public:
     MyCustomEndpoint(APIServer& apiServer, uint16_t port) 
-    : APIEndpoint(myServer) {
+        : APIEndpoint(apiServer) {
+        // Declare supported capabilities
         addProtocol("custom", GET | SET | EVT);
     }
 
-    void begin() override {   // Initialization
-        _setupAPIRoutes();     // API routes & event setup
-        _server.begin();      // Endpoint server start
+    void begin() override {
+        // Initialize your endpoint
+        _server.begin();
     }
 
-    void poll() override {    
-        _processEventQueue(); // Periodic event queue processing
-    }
-
-    void handleGet(const String& path, const JsonObject* args, 
-    JsonObject& response) override {
-         (...) // GET request handling
-    }
-
-    void handleSet(const String& path, const JsonObject& args, 
-    JsonObject& response) override {
-         (...) // SET request handling
+    void poll() override {
+        // Process incoming requests from your protocol
+        _processIncomingRequests();
+        
+        // Process outgoing events queue
+        _processEventQueue();
     }
 
     void pushEvent(const String& event, const JsonObject& data) override {
-       (...) // Queuing events received from business logic
+        // Queue or send events to connected clients
+        if (_eventQueue.size() >= MAX_QUEUE_SIZE) {
+            _eventQueue.pop();
+        }
+        _eventQueue.push(_formatEvent(event, data));
     }
 
 private:
     MyCustomServer _server;
     std::queue<String> _eventQueue;
     
-    void _setupAPIRoutes() {
-       (...) // Register API methods & events with server
+    void _processIncomingRequests() {
+        // Read incoming data from your protocol
+        if (_server.hasData()) {
+            auto request = _server.read();
+            
+            // Parse the request to extract method, path and parameters
+            auto parsedRequest = _parseRequest(request);
+            
+            // Create response document
+            StaticJsonDocument<512> doc;
+            JsonObject response = doc.to<JsonObject>();
+            
+            // Execute the API method
+            if (_apiServer.executeMethod(
+                parsedRequest.path,
+                parsedRequest.hasParams ? &parsedRequest.params : nullptr,
+                response
+            )) {
+                _server.send(_formatResponse(parsedRequest.path, response));
+            } else {
+                _server.send(_formatError("Invalid Request"));
+            }
+        }
     }
     
     void _processEventQueue() {
-       (...) // Broadcast events to clients
+        while (!_eventQueue.empty()) {
+            _server.broadcast(_eventQueue.front());
+            _eventQueue.pop();
+        }
     }
 };
 ```
+### Key Points
 
+Each endpoint is responsible for:
+- Protocol initialization (begin)
+- Polling for incoming requests
+- Parsing requests according to protocol format
+- Formatting responses
+- Managing event notifications queue
+
+The endpoint uses the APIServer to:
+- Execute API methods (_apiServer.executeMethod)
+- Get API documentation (_apiServer.getAPIDoc)
+- Register itself (_apiServer.addEndpoint)
+
+No constraint on request/response format:
+- Each protocol defines its own format
+- Parsing/formatting is handled by the endpoint
+- Only requirement is to convert to/from JsonObject for API method execution
+
+> **Best Practices**
+> - Keep parsing logic separate from request handling
+> - Use a queue for event notifications to avoid blocking
+> - Implement error handling appropriate for your protocol
+> - Consider implementing a debug mode for logging
 > For more details on server implementation, see existing implementations (ESPAsyncWebserial, MQTT, Serial...).
 
 ## Implementation Details

@@ -38,9 +38,6 @@ public:
 
     virtual void begin() = 0;
     virtual void poll() = 0;
-    
-    virtual void handleGet(const String& path, const JsonObject* args, JsonObject& response) = 0;
-    virtual void handleSet(const String& path, const JsonObject& args, JsonObject& response) = 0;
     virtual void pushEvent(const String& event, const JsonObject& data) = 0;
 
     const std::vector<Protocol>& getProtocols() const { return _protocols; }
