@@ -226,12 +226,12 @@ private:
     SerialFormatter _formatter;
     
     // Circular buffer for serial reading
-    static constexpr size_t SERIAL_BUFFER_SIZE = 512;
+    static constexpr size_t SERIAL_BUFFER_SIZE = 2048;
     char _buffer[SERIAL_BUFFER_SIZE];
     size_t _bufferIndex;
     unsigned long _lastReceiveTime;
     
-    static constexpr unsigned long SERIAL_POLL_INTERVAL = 50;    // Polling interval for events
+    static constexpr unsigned long SERIAL_POLL_INTERVAL = 20;    // Polling interval for events
     static constexpr unsigned long SERIAL_TIMEOUT = 200;         // Timeout in ms
     static constexpr size_t QUEUE_SIZE = 10;                     // Event message queue size
 

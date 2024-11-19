@@ -31,7 +31,7 @@ The Serial API protocol provides a simple, human-readable interface for interact
 ```
 Error types:
 - `invalid command`: Malformed command or timeout
-- `command too long`: Command exceeds maximum length (512 bytes)
+- `command too long`: Command exceeds maximum length (2048 bytes)
 - `wrong request or parameters`: Invalid API path or parameters
 - `command timeout`: Serial read timeout
 
@@ -120,9 +120,9 @@ api.methods:
 - Robust command parsing with timeout detection
 
 ### Limitations
-- Maximum command length: 512 bytes
+- Maximum command length: 2048 bytes
 - Queue size for events: 10 messages
-- Event polling interval: 50ms
+- Event/serial polling interval: 20ms
 - Command timeout: 200ms
 - Serial must be initialized before endpoint (typically in setup())
 - Commands must start with '>' to be processed
