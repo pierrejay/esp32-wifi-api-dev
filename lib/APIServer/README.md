@@ -62,11 +62,11 @@ wifimanager_app/
   │   │   ├── WiFiManager.cpp    // Business logic
   │   │   ├── WiFiManager.h      // Business logic
   │   │   └── WiFiManagerAPI.h   // Business logic API interface 
-  │   ├── APIServer/     
-  │   │   ├── APIServer.h        // Core functionality
-  │   │   ├── APIEndpoint.h      // Abstract endpoint implementation
-  │   │   ├── WebAPIEndpoint.h   // HTTP/WS server implementation
-  │   │   └── (...)              // Custom endpoints implementation
+  │   └── APIServer/     
+  │       ├── APIServer.h        // Core functionality
+  │       ├── APIEndpoint.h      // Abstract endpoint implementation
+  │       ├── WebAPIEndpoint.h   // HTTP/WS server implementation
+  │       └── (...)              // Custom endpoints implementation
   └── src/
       └── main.cpp               // Main app file
 ```
