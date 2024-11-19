@@ -416,3 +416,19 @@ Parameter validation is intentionally simple:
 
 > **Design Philosophy:**  
 > The library focuses on providing a robust foundation while allowing business logic to implement specific validation requirements. This separation of concerns ensures flexibility while maintaining code clarity.
+
+## Available Implementations
+
+The following protocol implementations are available out of the box:
+
+### HTTP/WebSocket API
+A complete HTTP REST API with WebSocket support for real-time events. Based on ESPAsyncWebServer.
+[Documentation](docs/README_web.md)
+
+### MQTT API
+MQTT implementation with topic-based routing and JSON payloads. Based on PubSubClient.
+[Documentation](docs/README_mqtt.md)
+
+### Serial API
+Human-readable serial protocol with line-oriented commands. Works with any Stream object (UART, USB CDC).
+[Documentation](docs/README_serial.md)
