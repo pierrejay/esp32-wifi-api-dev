@@ -28,7 +28,7 @@ Payload: GET
 Response:
 ```mqtt
 Topic: api/wifi/status
-Payload: SET {
+Payload: {
   "ap": {
     "enabled": true,
     "connected": false,

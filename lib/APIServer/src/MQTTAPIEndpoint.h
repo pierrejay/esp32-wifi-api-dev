@@ -131,6 +131,7 @@ private:
                 return;
             }
             
+            // Publish response
             String responseStr;
             serializeJson(response, responseStr);
             _mqtt.publish(topic, responseStr.c_str());
