@@ -20,24 +20,15 @@ api/events          # Event notifications
 ## Message Format
 
 ### GET Request
-Simple GET (implicit method):
 ```mqtt
 Topic: api/wifi/status
-Payload: (empty)
-```
-
-Explicit method:
-```mqtt
-Topic: api/wifi/status
-Payload: {
-  "method": "GET"
-}
+Payload: GET
 ```
 
 Response:
 ```mqtt
 Topic: api/wifi/status
-Payload: {
+Payload: SET {
   "ap": {
     "enabled": true,
     "connected": false,
@@ -51,15 +42,12 @@ Payload: {
 ### SET Request
 ```mqtt
 Topic: api/wifi/sta/config
-Payload: {
-  "method": "SET",
-  "params": {
+Payload: SET {
     "enabled": true,
     "network": {
-      "ssid": "MyWiFi",
-      "password": "12345678"
+        "ssid": "MyWiFi",
+        "password": "12345678"
     }
-  }
 }
 ```
 
@@ -67,7 +55,7 @@ Response:
 ```mqtt
 Topic: api/wifi/sta/config
 Payload: {
-  "success": true
+    "success": true
 }
 ```
 
@@ -94,7 +82,13 @@ Payload: {
 ```
 
 ## API Documentation
-The API documentation is available by subscribing to the `api` topic:
+To get the API documentation, send a GET request on the `api` topic:
+```mqtt
+Topic: api
+Payload: GET
+```
+
+Response:
 ```mqtt
 Topic: api
 Payload: {

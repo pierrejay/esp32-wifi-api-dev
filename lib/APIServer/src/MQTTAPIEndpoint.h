@@ -19,6 +19,11 @@ public:
     {
         addProtocol("mqtt", GET | SET | EVT);
         
+        // Generate client ID from ESP MAC address
+        uint8_t mac[6];
+        WiFi.macAddress(mac);
+        snprintf(_clientId, sizeof(_clientId), "ESP32_%02X%02X%02X", mac[3], mac[4], mac[5]);
+        
         _mqtt.setCallback([this](char* topic, byte* payload, unsigned int length) {
             handleMessage(topic, payload, length);
         });
@@ -81,20 +86,15 @@ private:
     static constexpr const char* API_TOPIC = "api/";          // api/<path>
     static constexpr const char* EVENTS_TOPIC = "api/events"; // api/events
 
+    char _clientId[15]; // Taille suffisante pour "ESP32_" + 6 caractères hex
+
     void reconnect() {
         if (_mqtt.connected()) return;
 
-        if (_mqtt.connect("ESP32_API")) {
+        if (_mqtt.connect(_clientId)) {
             // Subscribe to API requests
             _mqtt.subscribe((String(API_TOPIC) + "#").c_str());
-            
-            if (!_connected) {
-                _connected = true;
-                auto methods = _apiServer.getAPIDoc();
-                String doc;
-                serializeJson(methods, doc);
-                _mqtt.publish("api", doc.c_str());
-            }
+            _connected = true;
         }
     }
 
@@ -105,30 +105,43 @@ private:
         // Extract path from topic (remove 'api/' prefix)
         String path = topicStr.substring(strlen(API_TOPIC));
         
-        // Special case for API documentation
-        if (path.length() == 0) {
-            auto methods = _apiServer.getAPIDoc();
-            String doc;
-            serializeJson(methods, doc);
-            _mqtt.publish(topic, doc.c_str());
+        // Convert payload to string
+        String message;
+        message.reserve(length);
+        for (unsigned int i = 0; i < length; i++) {
+            message += (char)payload[i];
+        }
+
+        // Pour une requête GET simple
+        if (message == "GET") {
+            StaticJsonDocument<512> responseDoc;
+            JsonObject response = responseDoc.to<JsonObject>();
+            
+            // If it's a request on the api topic, return the doc
+            if (path.length() == 0) {
+                response = _apiServer.getAPIDoc();
+            } else if (_apiServer.executeMethod(path, nullptr, response)) {
+                // Otherwise execute the method normally
+            } else {
+                StaticJsonDocument<64> errorDoc;
+                errorDoc["error"] = "Invalid request";
+                String errorStr;
+                serializeJson(errorDoc, errorStr);
+                _mqtt.publish(topic, errorStr.c_str());
+                return;
+            }
+            
+            String responseStr;
+            serializeJson(response, responseStr);
+            _mqtt.publish(topic, responseStr.c_str());
             return;
         }
 
-        // Parse request
-        StaticJsonDocument<512> requestDoc;
-        JsonObject args;
-        String method;
-        bool hasArgs = false;
-
-        if (length > 0) {
-            // Convert payload to string
-            String message;
-            message.reserve(length);
-            for (unsigned int i = 0; i < length; i++) {
-                message += (char)payload[i];
-            }
-
-            DeserializationError error = deserializeJson(requestDoc, message);
+        // For a SET request with JSON parameters
+        if (message.startsWith("SET ")) {
+            String jsonStr = message.substring(4); // Skip "SET "
+            StaticJsonDocument<512> requestDoc;
+            DeserializationError error = deserializeJson(requestDoc, jsonStr);
             if (error) {
                 StaticJsonDocument<64> errorDoc;
                 errorDoc["error"] = "Invalid JSON";
@@ -138,36 +151,30 @@ private:
                 return;
             }
 
-            // Extract method and parameters if present
-            if (requestDoc.containsKey("method")) {
-                method = requestDoc["method"].as<String>();
-                if (requestDoc.containsKey("params")) {
-                    args = requestDoc["params"].as<JsonObject>();
-                    hasArgs = true;
-                }
+            // Execute method
+            StaticJsonDocument<512> responseDoc;
+            JsonObject response = responseDoc.to<JsonObject>();
+            
+            if (_apiServer.executeMethod(path, &requestDoc.as<JsonObject>(), response)) {
+                String responseStr;
+                serializeJson(response, responseStr);
+                _mqtt.publish(topic, responseStr.c_str());
+            } else {
+                StaticJsonDocument<64> errorDoc;
+                errorDoc["error"] = "Invalid request";
+                String errorStr;
+                serializeJson(errorDoc, errorStr);
+                _mqtt.publish(topic, errorStr.c_str());
             }
-        }
-        
-        // If no method specified, assume GET
-        if (method.length() == 0) {
-            method = "GET";
+            return;
         }
 
-        // Execute method
-        StaticJsonDocument<512> responseDoc;
-        JsonObject response = responseDoc.to<JsonObject>();
-        
-        if (_apiServer.executeMethod(path, hasArgs ? &args : nullptr, response)) {
-            String responseStr;
-            serializeJson(response, responseStr);
-            _mqtt.publish(topic, responseStr.c_str());
-        } else {
-            StaticJsonDocument<64> errorDoc;
-            errorDoc["error"] = "Invalid request";
-            String errorStr;
-            serializeJson(errorDoc, errorStr);
-            _mqtt.publish(topic, errorStr.c_str());
-        }
+        // If we arrive here, the format is not recognized
+        StaticJsonDocument<64> errorDoc;
+        errorDoc["error"] = "Invalid format. Use 'GET' or 'SET {params}'";
+        String errorStr;
+        serializeJson(errorDoc, errorStr);
+        _mqtt.publish(topic, errorStr.c_str());
     }
 
     void processEventQueue() {
