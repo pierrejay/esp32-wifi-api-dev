@@ -14,7 +14,7 @@ public:
     WebAPIEndpoint(APIServer& apiServer, uint16_t port) 
         : APIEndpoint(apiServer)
         , _server(port)
-        , _ws("/ws")
+        , _ws(WS_ROUTE)
         , _lastUpdate(0) 
     {
         // Declare supported protocols
@@ -80,6 +80,7 @@ private:
 
     // Constantes pour les routes et types MIME
     static constexpr const char* API_ROUTE = "/api";
+    static constexpr const char* WS_ROUTE = "/api/events";
     static constexpr const char* MIME_JSON = "application/json";
     static constexpr const char* MIME_TEXT = "text/plain";
     static constexpr const char* ERROR_BAD_REQUEST = "{\"error\":\"Bad Request\"}";

@@ -6,7 +6,6 @@
 - [Quick Start](#quick-start)
 - [APIServer Integration](#apiserver-integration)
 - [Implementation Details](#implementation-details)
-- [Important Notes](#important-notes)
 
 ## Overview
 
@@ -53,6 +52,9 @@ The WiFiManager library provides a comprehensive solution for managing WiFi conn
 
 ## Quick Start
 
+The setup is pretty straightforward, just include the WiFiManager header and create an instance of the WiFiManager class.
+You must call `begin()` to initialize the WiFiManager, and then call `poll()` in your main loop or in a task to maintain the WiFi connection (update status, handle reconnections, etc.).
+
 ```cpp
 #include "WiFiManager.h"
 
@@ -73,6 +75,11 @@ void loop() {
 ```
 
 ### Configuration
+
+Configuration can be done either by using the provided methods with ConnectionConfig structures, or by using the JSON interface. 
+The JSON interface provides a more flexible and dynamic way to configure the WiFiManager, as it allows for a more complex configuration to be loaded from a file or a web server.
+Configuration is saved to SPIFFS upon changes, so it will persist across reboots.
+The setAPConfig and setSTAConfig methods all provide type- and value-checking of the configuration parameters. Invalid configurations are rejected and return false. It will also clean up configuration items that are not applicable (like channel for AP) by removing them from the configuration before saving.
 
 #### Access Point (AP) Configuration
 
@@ -96,8 +103,9 @@ wifiManager.setAPConfigFromJson(apConfig.as<JsonObject>());
 - `password (string)`: Network password (8-64 chars)
 - `channel (int)`: WiFi channel (1-13)
 - `ip (string)`: AP IP address
-- `gateway (string)`: Gateway IP
-- `subnet (string)`: Subnet mask
+- `gateway (string, optional)`: Gateway IP
+
+In Access Point mode, the subnet is always set to 255.255.255.0. IP is mandatory, but gateway will be set to IP if not specified. 
 
 #### Station (STA) Configuration
 
@@ -124,7 +132,15 @@ wifiManager.setSTAConfigFromJson(staConfig.as<JsonObject>());
 - `gateway (string, optional)`: Gateway IP
 - `subnet (string, optional)`: Subnet mask
 
+In Station mode, `dhcp` decides if IP, gateway and subnet are used: 
+- If DHCP is enabled, IP, gateway and subnet are ignored. 
+- If DHCP is disabled, IP, gateway and subnet are used.
+  - IP is mandatory, but gateway and subnet are optional.
+  - If gateway is specified, then subnet is mandatory, and vice versa.
+
 ### Network Scanning
+
+The WiFiManager provides a method to scan for available networks and return the results in a JSON format.
 
 ```cpp
 StaticJsonDocument<512> networks;
@@ -149,7 +165,10 @@ Scan results format:
 
 ### Overview
 
-The WiFiManager library seamlessly integrates with the APIServer library to provide a RESTful API interface for WiFi management. This integration is handled through the `WiFiManagerAPI` class, which acts as a bridge between the WiFiManager's business logic and the API layer.
+The WiFiManager library seamlessly integrates with the APIServer library to provide a RESTful API interface for WiFi management & WebSocket notifications. This integration is handled through the `WiFiManagerAPI` class, which acts as a bridge between the WiFiManager's business logic and the API layer.
+The HTTP & WebSocket endpoints are provided by the `ESPAsyncWebServer` library, which is integrated with the APIServer through a dedicated `WebAPIEndpoint` integration class.
+All REST methods are automatically documented and available at the `/api` path. 
+The operation of the HTTP/WebSocket server is fully asynchronous and non-blocking, and does not interfere with the WiFiManager's operation.
 
 ### Core Components
 
@@ -161,49 +180,18 @@ The WiFiManager library seamlessly integrates with the APIServer library to prov
 
 ### API Methods
 
-#### GET Methods
-- `wifi/status`: Get current WiFi status
-- `wifi/config`: Get current configuration
-- `wifi/scan`: Scan available networks
+#### GET Methods : `HTTP GET`
+- `api/wifi/status`: Get current WiFi status
+- `api/wifi/config`: Get current configuration
+- `api/wifi/scan`: Scan available networks
 
-#### SET Methods
-- `wifi/ap/config`: Configure Access Point
-- `wifi/sta/config`: Configure Station mode
-- `wifi/hostname`: Set device hostname
+#### SET Methods : `HTTP POST`
+- `api/wifi/ap/config`: Configure Access Point
+- `api/wifi/sta/config`: Configure Station mode
+- `api/wifi/hostname`: Set device hostname
 
-#### EVT Methods
-- `wifi/events`: Real-time status and configuration updates
-
-### Implementation Example
-
-```cpp
-#include "WiFiManager.h"
-#include "WiFiManagerAPI.h"
-#include "APIServer.h"
-#include "WebAPIEndpoint.h"
-
-WiFiManager wifiManager;
-APIServer apiServer;
-WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
-WebAPIEndpoint webServer(apiServer, 80);
-
-void setup() {
-    apiServer.addEndpoint(&webServer);
-    
-    if (!wifiManager.begin()) {
-        Serial.println("WiFiManager initialization error");
-        while(1) delay(1000);
-    }
-    
-    apiServer.begin();
-}
-
-void loop() {
-    wifiManager.poll();     // Poll WiFiManager
-    wifiManagerAPI.poll();  // Poll API interface
-    apiServer.poll();       // Poll API server
-}
-```
+#### EVT Methods : `WebSocket`
+- `api/events`: Real-time status and configuration updates
 
 ### API Responses
 
@@ -243,12 +231,65 @@ void loop() {
         "ssid": "HomeNetwork",
         "password": "********",
         "dhcp": true,
-        "ip": "",
-        "gateway": "",
-        "subnet": ""
+        "ip": "192.168.1.200",
+        "gateway": "192.168.1.1",
+        "subnet": "255.255.255.0"
     }
 }
 ```
+
+#### Event Format
+An event message is formed by the former `status` and a `config` objects concatenated in a single `data` object.
+Events will be notified following this layout:
+```json
+{
+    "event": "wifi/events",
+    "data": {
+        "status": {...},
+        "config": {...}
+    }
+}
+```
+
+### Operations
+By default, the WiFiManager automatically registers the API methods and events when instantiated, and then serves the incoming `GET` & `POST` requests from the API Server.
+It will also send automatic updates to WebSocket clients when the WiFi connection state changes & regular status updates.
+This will allow for an asynchronous and non-blocking operation of the WiFiManager, without interfering with the API Server :
+- When a client sends a `POST` request (for example to connect to a WiFi network), the WiFiManagerAPI will set the value and send a success response back immediately. This success response only indicates that the request is valid and being processed, but does not indicate that the task is completed.
+- The client should then rely on the `WebSocket` events to be notified when the connection is established or an error occurs.
+- `GET` requests are served immediately, since they do not modify the state
+
+### Implementation Example
+
+```cpp
+#include "WiFiManager.h"
+#include "WiFiManagerAPI.h"
+#include "APIServer.h"
+#include "WebAPIEndpoint.h"
+
+WiFiManager wifiManager;
+APIServer apiServer;
+WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
+WebAPIEndpoint webServer(apiServer, 80);
+
+void setup() {
+    apiServer.addEndpoint(&webServer);
+    
+    if (!wifiManager.begin()) {
+        Serial.println("WiFiManager initialization error");
+        while(1) delay(1000);
+    }
+    
+    apiServer.begin();
+}
+
+void loop() {
+    wifiManager.poll();     // Poll WiFiManager
+    wifiManagerAPI.poll();  // Poll API interface
+    apiServer.poll();       // Poll API server
+}
+```
+
 
 ### Event System Integration
 
@@ -307,11 +348,3 @@ void onStateChange() {
 - Timeout handling
 - State consistency checks
 - JSON parsing error detection
-
-## Important Notes
-
-- Always call `poll()` in your main loop or in a task to maintain the WiFi connection
-- Password length must be between 8 and 64 characters
-- SSID length must not exceed 32 characters
-- Static IP configuration requires valid IP, gateway, and subnet mask
-- Configuration is automatically saved to SPIFFS upon changes
