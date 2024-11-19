@@ -5,9 +5,9 @@
 #include <ArduinoJson.h>
 
 
-//////////////////////
-// CONSTANTS
-//////////////////////
+/******************************************************************************/
+/************************** Constants Definitions *****************************/
+/******************************************************************************/
 
 constexpr const char* DEFAULT_AP_SSID = "ESP32-Access-Point";
 constexpr const char* DEFAULT_AP_PASSWORD = "12345678";
@@ -16,12 +16,13 @@ constexpr const char* CONFIG_FILE = "/wifi_config.json";
 static const IPAddress DEFAULT_AP_IP(192, 168, 4, 1);
 
 
-//////////////////////
-// HELPERS
-//////////////////////
 
-/* @brief Vérifier si une chaîne est une adresse IPv4 valide */
-/* @param const String& ip : Chaîne à vérifier */
+/******************************************************************************/
+/**************************** Helper Functions ********************************/
+/******************************************************************************/
+
+/* @brief Check if a string is a valid IPv4 address */
+/* @param const String& ip : String to check */
 /* @return bool */
 inline bool isValidIPv4(const String& ip) {
     if (ip.isEmpty()) return false;
@@ -31,15 +32,15 @@ inline bool isValidIPv4(const String& ip) {
     
     for (int i = 0; i < ip.length(); i++) {
         if (ip[i] == '.') {
-            // Vérifier la longueur du segment
+            // Check segment length
             if (i - lastDot - 1 <= 0 || i - lastDot - 1 > 3) return false;
             
-            // Vérifier la valeur du segment
+            // Check segment value
             String segment = ip.substring(lastDot + 1, i);
             int value = segment.toInt();
             if (value < 0 || value > 255) return false;
             
-            // Vérifier les zéros en tête
+            // Check for leading zeros
             if (segment.length() > 1 && segment[0] == '0') return false;
             
             dots++;
@@ -49,7 +50,7 @@ inline bool isValidIPv4(const String& ip) {
         }
     }
     
-    // Vérifier le dernier segment
+    // Check last segment
     String lastSegment = ip.substring(lastDot + 1);
     if (lastSegment.length() <= 0 || lastSegment.length() > 3) return false;
     int lastValue = lastSegment.toInt();
@@ -59,79 +60,79 @@ inline bool isValidIPv4(const String& ip) {
     return dots == 3;
 }
 
-/* @brief Vérifier si une chaîne est un masque de sous-réseau valide */
-/* @param const String& subnet : Chaîne à vérifier */
+/* @brief Check if a string is a valid subnet mask */
+/* @param const String& subnet : String to check */
 /* @return bool */
 inline bool isValidSubnetMask(const String& subnet) {
     if (!isValidIPv4(subnet)) return false;
     
-    // Convertir le masque en nombre 32 bits
+    // Convert subnet to 32-bit number
     IPAddress mask;
     if (!mask.fromString(subnet)) return false;
     uint32_t binary = mask[0] << 24 | mask[1] << 16 | mask[2] << 8 | mask[3];
     
-    // Vérifier que c'est un masque valide (tous les 1 sont contigus)
+    // Check that it's a valid mask (all 1s are contiguous)
     uint32_t zeroes = ~binary + 1;
     return (binary & (zeroes - 1)) == 0;
 }
 
-//////////////////////
-// STRUCTURES
-//////////////////////
 
-// Structure commune pour le statut des connexions
+/******************************************************************************/
+/****************************** Data Structures *******************************/
+/******************************************************************************/
+
+// Common structure for connection status
 struct ConnectionStatus {
     bool enabled = false;
     bool connected = false;
     bool busy = false;
 
     IPAddress ip = IPAddress(0, 0, 0, 0);
-    int clients = 0;     // Utilisé uniquement pour AP
-    int rssi = 0;       // Utilisé uniquement pour STA
-    unsigned long connectionStartTime = 0;  // Pour suivre le temps de connexion
+    int clients = 0;     // Used only for AP
+    int rssi = 0;       // Used only for STA
     
-    // Méthode pour sérialiser le statut en JSON
+    // Method to serialize status to JSON
     void toJson(JsonObject& obj) const {
         obj["enabled"] = enabled;
         obj["busy"] = busy;
         obj["connected"] = connected;
         obj["ip"] = ip.toString();
         if (rssi) obj["rssi"] = rssi;
-        if (clients > 0) obj["clients"] = clients;  // Uniquement si pertinent (AP)
+        if (clients > 0) obj["clients"] = clients;  // Only if relevant (AP)
     }
 };
 
-// Structure pour la configuration de la connexion
+// Structure for the connection configuration
 struct ConnectionConfig {
-    // Configuration générale
+    // General configuration
     bool enabled = false;
     String ssid = "";
     String password = "";
-    IPAddress ip = IPAddress(0, 0, 0, 0);           // IP fixe pour l'AP
+    IPAddress ip = IPAddress(0, 0, 0, 0);           // Fixed IP for AP
 
-    // Configuration spécifique AP
-    int channel = 0;           // Canal WiFi (1-13)
-    bool hideSSID = false;         // SSID caché ou visible
+    // Specific AP configuration
+    int channel = 0;           // WiFi channel (1-13)
+    bool hideSSID = false;     // Hidden or visible SSID
 
-    // Configuration spécifique STA
+    // Specific STA configuration
     bool dhcp = true;             // true = DHCP, false = IP fixe
     IPAddress gateway = IPAddress(0, 0, 0, 0);      // Gateway
-    IPAddress subnet = IPAddress(0, 0, 0, 0);       // Masque de sous-réseau
+    IPAddress subnet = IPAddress(0, 0, 0, 0);       // Subnet mask
 
-    // Méthode pour sérialiser la config en JSON
+    // Method to serialize config to JSON
     void toJson(JsonObject& obj) const {
         obj["enabled"] = enabled;
         obj["ssid"] = ssid;
         obj["password"] = password;
         obj["ip"] = ip.toString();
         
-        // Ajouter les champs spécifiques selon le type
-        if (channel > 0) {  // Si c'est une config AP
+        // Add specific fields according to the type
+        if (channel > 0) {  // If it's an AP config
             obj["gateway"] = gateway.toString();
             obj["subnet"] = subnet.toString();
             obj["channel"] = channel;
             obj["hideSSID"] = hideSSID;
-        } else {  // Si c'est une config STA
+        } else {  // If it's a STA config
             obj["dhcp"] = dhcp;
             if (!dhcp) {
                 obj["gateway"] = gateway.toString();
@@ -140,12 +141,15 @@ struct ConnectionConfig {
         }
     }
 
-    // Méthode pour désérialiser la config depuis un JSON
+    // Method to deserialize config from JSON. Avoids repeating validations for AP and STA
+    // Note: We don't check if mandatory fields are present in JSON or if parameters
+    // are valid, this is done in setAPConfigFromJson and setSTAConfigFromJson methods 
+    // (business logic). Only JSON field types are validated here.
     bool fromJson(const JsonObject& config) {
-        // Créer une copie temporaire pour validation
+        // Create a temporary copy for validation
         ConnectionConfig temp = *this;
 
-        // Validation des types pour les paramètres hors IP & subnet
+        // Validation of types for parameters other than IP & subnet
         if (config["ssid"].is<String>())     temp.ssid = config["ssid"].as<String>();
         if (config["password"].is<String>()) temp.password = config["password"].as<String>();
         if (config["channel"].is<int>())     temp.channel = config["channel"];
@@ -153,7 +157,7 @@ struct ConnectionConfig {
         if (config["enabled"].is<bool>())    temp.enabled = config["enabled"];
         if (config["hideSSID"].is<bool>())   temp.hideSSID = config["hideSSID"];
 
-        // Validation IP & subnet (doivent être valides si présents)
+        // Validation IP & subnet (must be valid if present)
         if (config["ip"].is<String>()) {
             String ipStr = config["ip"].as<String>();
             if (!isValidIPv4(ipStr)) return false;
@@ -165,7 +169,7 @@ struct ConnectionConfig {
             temp.subnet.fromString(subnetStr);
         }
         
-        // Si tout est valide, on applique les changements
+        // If everything is valid, apply the changes
         *this = temp;
         return true;
     }

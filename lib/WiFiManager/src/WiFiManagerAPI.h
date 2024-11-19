@@ -1,203 +1,229 @@
-#ifndef WIFI_MANAGER_API_H
-#define WIFI_MANAGER_API_H
+#ifndef WIFIMANAGERAPI_H
+#define WIFIMANAGERAPI_H
 
-#include <ESPAsyncWebServer.h>
-#include <AsyncJson.h>
-#include <APIServer.h>
-#include <ArduinoJson.h>
 #include "WiFiManager.h"
+#include "APIServer.h"
+#include <ArduinoJson.h>
 
-constexpr unsigned long WS_SEND_INTERVAL = 500; // Intervalle minimum entre les mises à jour WebSocket en millisecondes
-
-/**
- * @brief Classe API pour le gestionnaire WiFi
- * 
- * Cette classe fournit une interface REST API et WebSocket pour le gestionnaire WiFi.
- * Elle gère les requêtes HTTP pour obtenir et définir les paramètres WiFi,
- * et diffuse les changements d'état via WebSocket.
- */
 class WiFiManagerAPI {
 public:
-    /**
-     * @brief Construit un nouvel objet WiFiManagerAPI
-     * 
-     * @param wifiManager Référence vers l'instance du gestionnaire WiFi
-     * @param apiServer Référence vers le serveur API pour la gestion WebSocket
-     */
     WiFiManagerAPI(WiFiManager& wifiManager, APIServer& apiServer) 
-        : _wifiManager(wifiManager), _apiServer(apiServer), _lastWsUpdate(0) {
-        
-        // S'abonner aux changements d'état
+        : _wifiManager(wifiManager)
+        , _apiServer(apiServer)
+        , _lastNotification(0) 
+    {
+        // Subscribe to WiFi state changes
         _wifiManager.onStateChange([this]() {
-            sendWsUpdates(true);
+            sendNotification(true);
         });
         
-        // Obtenir une référence au serveur web
-        AsyncWebServer& server = apiServer.server();
-        registerRoutes(server);
+        registerMethods();
     }
 
     /**
-     * @brief Vérifie les changements d'état et envoie les mises à jour WebSocket
+     * @brief Checks for state changes and sends updates via WebSocket
      * 
-     * Doit être appelé régulièrement dans la boucle principale.
-     * Envoie les mises à jour via WebSocket lorsque des changements d'état sont détectés
-     * et que l'intervalle minimum est écoulé.
+     * Must be called regularly in the main loop.
+     * Sends updates via WebSocket when state changes are detected
+     * and the minimum interval has elapsed.
      */
     void poll() {
         unsigned long now = millis();
-        if (now - _lastWsUpdate > WS_SEND_INTERVAL) {
-            if (sendWsUpdates(false)) _lastWsUpdate = now;
+        if (now - _lastNotification > NOTIFICATION_INTERVAL) {
+            if (sendNotification(false)) _lastNotification = now;
         }
     }
 
 private:
     WiFiManager& _wifiManager;
     APIServer& _apiServer;
-    unsigned long _lastWsUpdate;
+    unsigned long _lastNotification;
     StaticJsonDocument<2048> _previousState;
+    static constexpr unsigned long NOTIFICATION_INTERVAL = 500;
 
     /**
-     * @brief Enregistre toutes les routes API
-     * 
-     * @param server Instance du serveur web pour enregistrer les routes
+     * @brief Register the methods to the API server
      */
-    void registerRoutes(AsyncWebServer& server) {
-        // Routes GET
-        server.on("/api/wifi/status", HTTP_GET, [this](AsyncWebServerRequest *request) {
-            handleGetStatus(request);
-        });
-
-        server.on("/api/wifi/config", HTTP_GET, [this](AsyncWebServerRequest *request) {
-            handleGetConfig(request);
-        });
-
-        server.on("/api/wifi/scan", HTTP_GET, [this](AsyncWebServerRequest *request) {
-            handleScanNetworks(request);
-        });
-
-        // Routes POST
-        AsyncCallbackJsonWebHandler* setAPConfigHandler = new AsyncCallbackJsonWebHandler(
-            "/api/wifi/ap/config",
-            [this](AsyncWebServerRequest* request, JsonVariant& json) {
-                handleSetAPConfig(request, json.as<JsonObject>());
-            }
+    void registerMethods() {
+        // GET wifi/status
+        _apiServer.registerMethod("wifi/status", 
+            APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                _wifiManager.getStatusToJson(response);
+                return true;
+            })
+            .desc("Get WiFi status")
+            .response("ap", {
+                {"enabled", "bool"},
+                {"connected", "bool"},
+                {"clients", "int"},
+                {"ip", "string"},
+                {"rssi", "int"}
+            })
+            .response("sta", {
+                {"enabled", "bool"},
+                {"connected", "bool"},
+                {"ip", "string"},
+                {"rssi", "int"}
+            })
+            .build()
         );
-        server.addHandler(setAPConfigHandler);
 
-        AsyncCallbackJsonWebHandler* setSTAConfigHandler = new AsyncCallbackJsonWebHandler(
-            "/api/wifi/sta/config",
-            [this](AsyncWebServerRequest* request, JsonVariant& json) {
-                handleSetSTAConfig(request, json.as<JsonObject>());
-            }
+        // GET wifi/config
+        _apiServer.registerMethod("wifi/config",
+            APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                _wifiManager.getConfigToJson(response);
+                return true;
+            })
+            .desc("Get WiFi configuration")
+            .response("ap", {
+                {"enabled", "bool"},
+                {"ssid", "string"},
+                {"password", "string"},
+                {"channel", "int"},
+                {"ip", "string"},
+                {"gateway", "string"},
+                {"subnet", "string"}
+            })
+            .response("sta", {
+                {"enabled", "bool"},
+                {"ssid", "string"},
+                {"password", "string"},
+                {"dhcp", "bool"},
+                {"ip", "string"},
+                {"gateway", "string"},
+                {"subnet", "string"}
+            })
+            .build()
         );
-        server.addHandler(setSTAConfigHandler);
 
-        AsyncCallbackJsonWebHandler* setHostnameHandler = new AsyncCallbackJsonWebHandler(
-            "/api/wifi/hostname",
-            [this](AsyncWebServerRequest* request, JsonVariant& json) {
-                handleSetHostname(request, json.as<JsonObject>());
-            }
+        // GET wifi/scan
+        _apiServer.registerMethod("wifi/scan",
+            APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                _wifiManager.getAvailableNetworks(response);
+                return true;
+            })
+            .desc("Scan available WiFi networks")
+            .response("networks", {
+                {"ssid", "string"},
+                {"rssi", "int"},
+                {"encryption", "int"}
+            })
+            .build()
         );
-        server.addHandler(setHostnameHandler);
+
+        // SET wifi/ap/config
+        _apiServer.registerMethod("wifi/ap/config",
+            APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+                bool success = _wifiManager.setAPConfigFromJson(*args);
+                response["success"] = success;
+                return true;
+            })
+            .desc("Configure Access Point")
+            .param("enabled", "bool")
+            .param("ssid", "string")
+            .param("password", "string")
+            .param("channel", "int")
+            .param("ip", "string", false)       // Optional
+            .param("gateway", "string", false)  // Optional
+            .param("subnet", "string", false)   // Optional
+            .response("success", "bool")
+            .build()
+        );
+
+        // SET wifi/sta/config
+        _apiServer.registerMethod("wifi/sta/config",
+            APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+                bool success = _wifiManager.setSTAConfigFromJson(*args);
+                response["success"] = success;
+                return true;
+            })
+            .desc("Configure Station mode")
+            .param("enabled", "bool")
+            .param("ssid", "string")
+            .param("password", "string")
+            .param("dhcp", "bool")
+            .param("ip", "string", false)       // Optional
+            .param("gateway", "string", false)  // Optional
+            .param("subnet", "string", false)   // Optional
+            .response("success", "bool")
+            .build()
+        );
+
+        // SET wifi/hostname
+        _apiServer.registerMethod("wifi/hostname",
+            APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
+                if (!(*args)["hostname"].is<const char*>()) {
+                    return false;
+                }
+                bool success = _wifiManager.setHostname((*args)["hostname"].as<const char*>());
+                response["success"] = success;
+                return true;
+            })
+            .desc("Set device hostname")
+            .param("hostname", "string")
+            .response("success", "bool")
+            .build()
+        );
+
+        // EVT wifi/events
+        _apiServer.registerMethod("wifi/events",
+            APIMethodBuilder(APIMethodType::EVT)
+            .desc("WiFi status and configuration updates")
+            .response("status", {
+                {"ap", {
+                    {"enabled", "bool"},
+                    {"connected", "bool"},
+                    {"clients", "int"},
+                    {"ip", "string"},
+                    {"rssi", "int"}
+                }},
+                {"sta", {
+                    {"enabled", "bool"},
+                    {"connected", "bool"},
+                    {"ip", "string"},
+                    {"rssi", "int"}
+                }}
+            })
+            .response("config", {
+                {"ap", {
+                    {"enabled", "bool"},
+                    {"ssid", "string"},
+                    {"password", "string"},
+                    {"channel", "int"},
+                    {"ip", "string"},
+                    {"gateway", "string"},
+                    {"subnet", "string"}
+                }},
+                {"sta", {
+                    {"enabled", "bool"},
+                    {"ssid", "string"},
+                    {"password", "string"},
+                    {"dhcp", "bool"},
+                    {"ip", "string"},
+                    {"gateway", "string"},
+                    {"subnet", "string"}
+                }}
+            })
+            .build()
+        );
     }
 
     /**
-     * @brief Gère la requête GET pour obtenir le statut
+     * @brief Send a notification to the API server
+     * @param force Force the notification even if the state has not changed
+     * @return True if the notification has been sent, false otherwise
      */
-    void handleGetStatus(AsyncWebServerRequest* request) {
-        StaticJsonDocument<2048> doc;
-        JsonObject status = doc.to<JsonObject>();
-        _wifiManager.getStatusToJson(status);
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    }
-
-    /**
-     * @brief Gère la requête GET pour obtenir la configuration
-     */
-    void handleGetConfig(AsyncWebServerRequest* request) {
-        StaticJsonDocument<2048> doc;
-        doc["hostname"] = _wifiManager.getHostname();
-        JsonObject config = doc["config"].to<JsonObject>();
-        _wifiManager.getConfigToJson(config);
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    }
-
-    /**
-     * @brief Gère la requête GET pour scanner les réseaux
-     */
-    void handleScanNetworks(AsyncWebServerRequest* request) {
-        StaticJsonDocument<2048> doc;
-        JsonObject networks = doc.to<JsonObject>();
-        _wifiManager.getAvailableNetworks(networks);
-
-        String response;
-        serializeJson(doc, response);
-        request->send(200, "application/json", response);
-    }
-
-    /**
-     * @brief Gère la requête POST pour configurer le point d'accès
-     */
-    void handleSetAPConfig(AsyncWebServerRequest* request, const JsonObject& config) {
-        bool success = _wifiManager.setAPConfigFromJson(config);
-        String response = "{\"success\":" + String(success ? "true" : "false") + "}";
-        request->send(200, "application/json", response);
-    }
-
-    /**
-     * @brief Gère la requête POST pour configurer le client WiFi
-     */
-    void handleSetSTAConfig(AsyncWebServerRequest* request, const JsonObject& config) {
-        bool success = _wifiManager.setSTAConfigFromJson(config);
-        String response = "{\"success\":" + String(success ? "true" : "false") + "}";
-        request->send(200, "application/json", response);
-    }
-
-    /**
-     * @brief Gère la requête POST pour définir le nom d'hôte
-     */
-    void handleSetHostname(AsyncWebServerRequest* request, const JsonObject& config) {
-        if (!config["hostname"].is<const char*>()) {
-            request->send(400, "application/json", "{\"error\":\"Invalid hostname\"}");
-            return;
-        }
-
-        bool success = _wifiManager.setHostname(config["hostname"].as<const char*>());
-        String response = "{\"success\":" + String(success ? "true" : "false") + "}";
-        request->send(200, "application/json", response);
-    }
-
-    /**
-     * @brief Envoie les mises à jour d'état via WebSocket
-     * 
-     * @param force Force l'envoi même si aucun changement n'est détecté
-     * @return true si des changements ont été envoyés
-     */
-    bool sendWsUpdates(bool force = false) {
-        // Fetch the current status and config
+    bool sendNotification(bool force = false) {
         StaticJsonDocument<2048> newState;
         JsonObject newStatus = newState["status"].to<JsonObject>();
         JsonObject newConfig = newState["config"].to<JsonObject>();
         _wifiManager.getStatusToJson(newStatus);
         _wifiManager.getConfigToJson(newConfig);
 
-        // Check if there are changes (or force update)
         bool changed = (force || _previousState.isNull() || newState != _previousState);
-        
+        // If force mode on or change happened, send notification to clients
         if (changed) {
-            StaticJsonDocument<2048> sendDoc;
-            sendDoc["type"] = "wifi_manager";
-            JsonObject data = sendDoc["data"].to<JsonObject>();
-            data["status"] = newStatus;
-            data["config"] = newConfig;
-            String message;
-            serializeJson(sendDoc, message);
-            _apiServer.push(message);
+            _apiServer.broadcast("wifi/events", newState.as<JsonObject>());
             _previousState = newState;
             return true;    
         }
@@ -205,4 +231,4 @@ private:
     }
 };
 
-#endif // WIFI_MANAGER_API_H 
+#endif // WIFIMANAGERAPI_H 

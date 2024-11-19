@@ -13,28 +13,41 @@
 
 class WiFiManager {
 private:
+    // WiFi status and configuration
     String hostname;
     ConnectionConfig apConfig, staConfig;
     ConnectionStatus apStatus, staStatus;
     StaticJsonDocument<256> _lastStatus;
-    std::function<void()> _onStateChange;
 
-    static const unsigned long CONNECTION_TIMEOUT = 30000;  // 30 secondes timeout
-    static const unsigned long RETRY_INTERVAL = 30000;      // 30 secondes entre les tentatives
+    // WiFi connection parameters
+    static constexpr unsigned long POLL_INTERVAL = 2000;        // 2 seconds between status updates
+    static constexpr unsigned long CONNECTION_TIMEOUT = 30000;  // 30 seconds timeout for connection attempts
+    static constexpr unsigned long RETRY_INTERVAL = 30000;      // 30 seconds between retries after disconnection
+    unsigned long lastConnectionCheck = 0;
+    unsigned long lastSTARetry = 0;
+    unsigned long lastSTAConnectionAttempt = 0;
 
+    // Lifecycle methods
     void initDefaultConfig();
+    void handleReconnections();
 
+    // Config validation and application
     bool validateAPConfig(ConnectionConfig& config);
     bool validateSTAConfig(ConnectionConfig& config);
     bool applyAPConfig(const ConnectionConfig& config);
     bool applySTAConfig(const ConnectionConfig& config);
     
+    // Config file management
     bool saveConfig();
     bool loadConfig();
+
+    // Helpers
     bool isValidIPv4(const String& ip);
     bool isValidSubnetMask(const String& subnet);
-    void handleReconnections();
+
+    // Send push notifications to the API server
     void notifyStateChange();
+    std::function<void()> _onStateChange;
 
 public:
     WiFiManager() = default;
@@ -69,7 +82,7 @@ public:
     // Main loop method
     void poll();
 
-    // State change notification callback registration
+    // Method to register a state change callback (API server notifications)
     void onStateChange(std::function<void()> callback);
 };
 
