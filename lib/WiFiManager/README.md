@@ -13,13 +13,14 @@ The WiFiManager library provides a comprehensive solution for managing WiFi conn
 
 ### Key Features
 - Dual mode operation (AP + STA)
-- Configuration persistence in SPIFFS
 - JSON-based configuration interface
 - Automatic reconnection handling
+- Fully asynchronous and non-blocking operation
 - mDNS support for local network discovery
 - RESTful API integration
 - Real-time status monitoring
 - Event-driven architecture
+- Configuration persistence in SPIFFS
 
 ## Architecture
 
