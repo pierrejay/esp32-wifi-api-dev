@@ -7,6 +7,7 @@
 - [Documentation](#documentation)
 - [Custom](#custom)
 - [Implementation Details](#implementation-details)
+- [Available Implementations](#available-implementations)
 
 ## Architecture
 
