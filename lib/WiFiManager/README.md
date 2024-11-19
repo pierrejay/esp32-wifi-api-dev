@@ -5,6 +5,7 @@
 - [Architecture](#architecture)
 - [Quick Start](#quick-start)
 - [APIServer Integration](#apiserver-integration)
+- [Web UI](#web-ui)
 - [Implementation Details](#implementation-details)
 
 ## Overview
@@ -50,6 +51,7 @@ The WiFiManager library provides a comprehensive solution for managing WiFi conn
 - Registers WiFi management API methods
 - Handles incoming API requests to WiFiManager
 - Broadcasts events to the API Server
+- Serves static HTTP/JS backend to manage WiFi settings
 
 ## Quick Start
 
@@ -318,6 +320,47 @@ void onStateChange() {
 - Method parameters are validated before execution
 - All responses follow a consistent JSON format
 - API endpoints automatically handle parameter validation
+
+## Web UI
+
+### Overview
+The library includes a built-in web interface for easy WiFi configuration. This interface is served via the HTTP endpoint and provides a user-friendly way to:
+- Configure Access Point settings
+- Manage Station mode connections
+- Scan available networks
+- Set static IP configurations
+- Monitor connection status in real-time
+- Configure device hostname
+
+### Accessing the Interface
+The web interface is available at `http://<device-ip>/` or through mDNS at `http://<hostname>.local/` if supported. The default hostname is "esp32".
+
+> **Important Note:**  
+> Be cautious when disabling both AP and STA connections, as this will make the web interface inaccessible. Always ensure at least one connection method remains active to maintain access to the device.
+
+### Features
+- Real-time status updates via WebSocket
+- Network scanning capabilities
+- Password-protected configurations
+- DHCP/Static IP configuration
+- Signal strength indication for STA mode
+- Connected clients count for AP mode
+
+### Installation
+The web interface files must be uploaded to the device's SPIFFS file system. Using PlatformIO:
+
+1. Place the interface files in the `data/` directory of your project
+2. Build the file system image:
+```bash
+pio run --target buildfs
+```
+3. Upload the file system:
+```bash
+pio run --target uploadfs
+```
+
+> **Note:**  
+> The web interface is automatically enabled when using the WebAPIEndpoint class. No additional configuration is required beyond uploading the file system.
 
 ## Implementation Details
 
