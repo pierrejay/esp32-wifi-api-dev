@@ -3,10 +3,10 @@
 ## Table of Contents
 - [Architecture](#architecture)
 - [Implementation](#implementation)
-- [Methods](#methods)
+- [API Method Declaration](#api-method-declaration)
 - [Documentation](#documentation)
 - [Custom](#custom)
-- [Details](#details)
+- [Implementation Details](#implementation-details)
 
 ## Architecture
 
@@ -152,7 +152,7 @@ void loop() {
 
 > **Note:** All initialized endpoints will automatically expose all API methods and autonomously execute client requests. The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver, but this is not important if all API-related tasks are grouped into a task running on the same core as the interfaces (UART, TCP/IP...).
 
-## RPC Method Declaration
+## API Method Declaration
 
 ### Method Types
 
@@ -162,8 +162,8 @@ void loop() {
 - Always return a response object
 
 ```cpp
-rpcServer.registerMethod("wifi/status",
-    RPCMethodBuilder(RPCMethodType::GET, handler)
+apiServer.registerMethod("wifi/status",
+    APIMethodBuilder(APIMethodType::GET, handler)
         .desc("Get WiFi status")
         .response("status", "object")
         .build()
@@ -176,8 +176,8 @@ rpcServer.registerMethod("wifi/status",
 - Return success/failure response
 
 ```cpp
-rpcServer.registerMethod("wifi/sta/config",
-    RPCMethodBuilder(RPCMethodType::SET, handler)
+apiServer.registerMethod("wifi/sta/config",
+    APIMethodBuilder(APIMethodType::SET, handler)
         .desc("Configure Station mode")
         .param("ssid", "string")
         .param("password", "string")
@@ -192,8 +192,8 @@ rpcServer.registerMethod("wifi/sta/config",
 - One-way communication (server to client)
 
 ```cpp
-rpcServer.registerMethod("wifi/events",
-    RPCMethodBuilder(RPCMethodType::EVT)
+apiServer.registerMethod("wifi/events",
+    APIMethodBuilder(APIMethodType::EVT)
         .desc("WiFi status updates")
         .response("status", "object")
         .build()
