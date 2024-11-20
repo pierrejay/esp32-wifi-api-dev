@@ -142,7 +142,7 @@ Note: The proxy buffer size is limited to 1024 bytes. If your application sends 
 ### Limitations
 - Maximum command length: 4096 bytes
 - Queue size for events: 10 messages
-- Serial must be initialized before endpoint (typically in setup())
+- Serial must be initialized after endpoint (typically in setup())
 - Commands must start with '>' to be processed
 - Command timeout: 200ms by default
 - Event queue polling interval: 100ms by default

@@ -50,7 +50,7 @@ The APIServer library addresses a common challenge in embedded systems developme
 4. Poll regularly, or run within a task
 
 > **Error handling note:**  
-> Parameter type/value checking & error handling is responsibility of business logic API interface.
+> Parameter type/value checking & error handling is responsibility of business logic.
 > API Server only checks for presence of required parameters.
 
 ### Basic Implementation Example

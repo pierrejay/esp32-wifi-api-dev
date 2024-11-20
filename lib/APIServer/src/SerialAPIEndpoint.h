@@ -9,7 +9,7 @@
 
 class SerialAPIEndpoint : public APIEndpoint {
 public:
-    static SerialProxy proxy;  // Proxy statique public
+    static SerialProxy proxy;  // Public static proxy
 
     SerialAPIEndpoint(APIServer& apiServer, Stream& serial = Serial) 
         : APIEndpoint(apiServer)
@@ -28,9 +28,9 @@ public:
     void poll() override {
         unsigned long now = millis();
 
-        // Si données dans le proxy et délai écoulé depuis dernière écriture
+        // If proxy has data and delay elapsed since last write
         if (_proxy.available() && (now - _lastProxyWrite > MESSAGE_COMPLETE_DELAY)) {
-            // Écrire tout le message d'un coup
+            // Write all data at once
             while (_proxy.available()) {
                 _serial.write(_proxy.read());
                 _serial.flush();
@@ -358,7 +358,7 @@ private:
             _eventQueue.pop();
         }
     }
-    
+
     Stream& _serial;
     SerialProxy _proxy;
     unsigned long _lastEventQueueUpdate;
