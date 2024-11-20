@@ -248,7 +248,7 @@
     /* @return bool */
     bool WiFiManager::applyAPConfig(const ConnectionConfig& config) {
         if (config.enabled) {
-            Serial.println("WIFIMANAGER: Applying AP configuration:");
+            Serial.println("wifi_ap: Applying AP configuration:");
             Serial.printf("- SSID: %s\n", config.ssid.c_str());
             Serial.printf("- IP: %s\n", config.ip.toString().c_str());
             Serial.printf("- Channel: %d\n", config.channel);
@@ -262,15 +262,15 @@
             );
             
             if (!success) {
-                Serial.println("WIFIMANAGER: Failed to configure access point");
+                Serial.println("wifi_ap: Failed to configure access point");
                 return false;
             }
 
             bool result = WiFi.softAPConfig(config.ip, config.gateway, config.subnet);
             if (!result) {
-                Serial.println("WIFIMANAGER: Failed to configure AP IP");
+                Serial.println("wifi_ap: Failed to configure AP IP");
             } else {
-                Serial.printf("WIFIMANAGER: Access point configured successfully (IP: %s)\n", WiFi.softAPIP().toString().c_str());
+                Serial.printf("wifi_ap: Access point configured successfully (IP: %s)\n", WiFi.softAPIP().toString().c_str());
             }
             
             apStatus.enabled = true;
@@ -278,7 +278,7 @@
             return result;
         }
         
-        Serial.println("WIFIMANAGER: Disabling the access point");
+        Serial.println("wifi_ap: Disabling the access point");
         WiFi.softAPdisconnect(true);
         apStatus.enabled = false;
         notifyStateChange();
@@ -290,14 +290,14 @@
     /* @return bool */
     bool WiFiManager::applySTAConfig(const ConnectionConfig& config) {
         if (config.enabled) {
-            Serial.println("WIFIMANAGER: Applying STA configuration:");
+            Serial.println("wifi_sta: Applying STA configuration:");
             Serial.printf("- SSID: %s\n", config.ssid.c_str());
             Serial.printf("- DHCP mode: %s\n", config.dhcp ? "Yes" : "No");
             
             WiFi.mode(apConfig.enabled ? WIFI_AP_STA : WIFI_STA);
             
             if (!config.dhcp) {
-                Serial.println("WIFIMANAGER: Static IP configuration:");
+                Serial.println("wifi_sta: Static IP configuration:");
                 Serial.printf("- IP: %s\n", config.ip.toString().c_str());
                 Serial.printf("- Gateway: %s\n", config.gateway.toString().c_str());
                 Serial.printf("- Subnet: %s\n", config.subnet.toString().c_str());
@@ -308,12 +308,12 @@
             staStatus.enabled = true;
             staStatus.busy = true;
             
-            Serial.println("WIFIMANAGER: Attempting to connect to WiFi...");
+            Serial.println("wifi_sta: Attempting to connect to WiFi...");
             notifyStateChange();
             return true;
         }
         
-        Serial.println("WIFIMANAGER: Disconnecting from WiFi");
+        Serial.println("wifi_sta: Disconnecting from WiFi");
         WiFi.disconnect(true);
         staStatus.enabled = false;
         staStatus.busy = false;
@@ -324,7 +324,7 @@
     /* @brief Save configuration to Flash */
     /* @return bool */
     bool WiFiManager::saveConfig() {
-        Serial.println("WIFIMANAGER: Saving configuration...");
+        Serial.println("wifi_config: Saving configuration...");
         
         StaticJsonDocument<1024> doc;
         
@@ -338,34 +338,34 @@
         
         File file = SPIFFS.open(CONFIG_FILE, "w");
         if (!file) {
-            Serial.println("WIFIMANAGER: Error opening file for saving");
+            Serial.println("wifi_config: Error opening file for saving");
             return false;
         }
         
         if (serializeJson(doc, file) == 0) {
-            Serial.println("WIFIMANAGER: Error saving configuration");
+            Serial.println("wifi_config: Error saving configuration");
             file.close();
             return false;
         }
         
         file.close();
-        Serial.println("WIFIMANAGER: Configuration saved successfully");
+        Serial.println("wifi_config: Configuration saved successfully");
         return true;
     }
 
     /* @brief Load configuration from Flash */
     /* @return bool */
     bool WiFiManager::loadConfig() {
-        Serial.println("WIFIMANAGER: Loading configuration...");
+        Serial.println("wifi_config: Loading configuration...");
         
         if (!SPIFFS.exists(CONFIG_FILE)) {
-            Serial.println("WIFIMANAGER: Configuration file not found, using default parameters");
+            Serial.println("wifi_config: Configuration file not found, using default parameters");
             return false;
         }
         
         File file = SPIFFS.open(CONFIG_FILE, "r");
         if (!file) {
-            Serial.println("WIFIMANAGER: Error opening configuration file");
+            Serial.println("wifi_config: Error opening configuration file");
             return false;
         }
         
@@ -374,12 +374,12 @@
         file.close();
         
         if (error) {
-            Serial.print("WIFIMANAGER: Error during JSON deserialization: ");
+            Serial.print("wifi_config: Error during JSON deserialization: ");
             Serial.println(error.c_str());
             return false;
         }
 
-        Serial.println("WIFIMANAGER: Configuration loaded successfully:");
+        Serial.println("wifi_config: Configuration loaded successfully:");
 
         // Load hostname
         if (doc["hostname"].is<String>()) {
@@ -389,7 +389,7 @@
 
         // Charger config AP
         if (doc["ap"].is<JsonObject>()) {
-            Serial.println("WIFIMANAGER: AP configuration found:");
+            Serial.println("wifi_config: AP configuration found:");
             JsonObject apJson = doc["ap"].as<JsonObject>();
             setAPConfigFromJson(apJson);
             Serial.printf("- SSID: %s\n", apConfig.ssid.c_str());
@@ -399,7 +399,7 @@
 
         // Charger config STA
         if (doc["sta"].is<JsonObject>()) {
-            Serial.println("WIFIMANAGER: STA configuration found:");
+            Serial.println("wifi_config: STA configuration found:");
             JsonObject staJson = doc["sta"].as<JsonObject>();
             setSTAConfigFromJson(staJson);
             Serial.printf("- SSID: %s\n", staConfig.ssid.c_str());
@@ -441,7 +441,7 @@
                 if (WiFi.status() == WL_CONNECTED) {
                     staStatus.busy = false;
                     staStatus.connected = true;
-                    Serial.println("WIFIMANAGER: WiFi connection established:");
+                    Serial.println("wifi_sta: WiFi connection established:");
                     Serial.printf("- SSID: %s\n", WiFi.SSID().c_str());
                     Serial.printf("- IP: %s\n", WiFi.localIP().toString().c_str());
                     Serial.printf("- Signal strength: %d dBm\n", WiFi.RSSI());
@@ -451,7 +451,7 @@
                 else if (currentTime - lastSTAConnectionAttempt >= CONNECTION_TIMEOUT) {
                     staStatus.busy = false;
                     staStatus.connected = false;
-                    Serial.println("WIFIMANAGER: WiFi connection timeout");
+                    Serial.println("wifi_sta: WiFi connection timeout");
                     WiFi.disconnect(true);
                     refreshSTAStatus();
                     notifyStateChange();
@@ -459,7 +459,7 @@
             }
             else if (!staStatus.connected) {
                 if (currentTime - lastSTARetry >= RETRY_INTERVAL) {
-                    Serial.println("WIFIMANAGER: New WiFi connection attempt...");
+                    Serial.println("wifi_sta: New WiFi connection attempt...");
                     lastSTARetry = currentTime;
                     
                     WiFi.disconnect(true);
@@ -470,7 +470,7 @@
         
         // Manage AP mode
         if (apConfig.enabled && !apStatus.enabled) {
-            Serial.println("WIFIMANAGER: Restarting the access point...");
+            Serial.println("wifi_ap: Restarting the access point...");
             applyAPConfig(apConfig);
         }
         

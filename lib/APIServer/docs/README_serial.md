@@ -125,11 +125,31 @@ api.methods:
 - Serial must be initialized before endpoint (typically in setup())
 - Commands must start with '>' to be processed
 - Command timeout: 200ms by default
-- Event/serial polling interval: 5ms by default
+- Event/serial polling interval: 2ms by default
+
+### Serial Port Sharing
+The SerialAPIEndpoint implements a transparent proxy mechanism that allows sharing the serial port between API commands and regular application traffic:
+
+- Commands starting with '>' are intercepted and processed by the API
+- All other traffic is buffered through a 1KB circular buffer
+- The proxy is automatically installed by defining `Serial` as `SerialAPIEndpoint::proxy`
+- Application code can use `Serial` normally without being aware of the API
+
+Example with mixed traffic:
+```
+Serial.println("Hello World");     // Regular application output
+> GET wifi/status                  // API command
+< GET wifi/status: ...            // API response
+Serial.println("Done");           // Regular application output
+```
+
+This allows seamless integration of the Serial API without modifying existing application code that uses the serial port for debugging or other purposes.
+
+Note: The proxy buffer size is limited to 1024 bytes. If your application sends large amounts of data through Serial, you may need to adjust `SerialProxy::BUFFER_SIZE`.
 
 ### Tips
-- In case of communication error, send any character (followed by the end of line char "\n") to flush the buffer.
-- Use 115200 baud rate when possible (most drivers & USB dongles support it).
+- Make sure the buffer size is big enough to handle the longest command. 
+- If necessary, split the command into multiple smaller commands to reduce buffer size as much as possible.
 
 ### Usage
 ```cpp

@@ -3,11 +3,14 @@
 
 #include "APIServer.h"
 #include "APIEndpoint.h"
+#include "SerialProxy.h"
 #include <ArduinoJson.h>
 #include <queue>
 
 class SerialAPIEndpoint : public APIEndpoint {
 public:
+    static SerialProxy proxy;  // Proxy statique public
+
     SerialAPIEndpoint(APIServer& apiServer, Stream& serial = Serial) 
         : APIEndpoint(apiServer)
         , _serial(serial)
@@ -20,20 +23,41 @@ public:
     }
 
     void begin() override {
-        // Nothing to do, Serial will be initialized in the main application (setup())
     }
 
     void poll() override {
         unsigned long now = millis();
 
-        // Process outgoing events queue with polling interval
+        // Process outgoing events queue
         if (now - _lastUpdate > SERIAL_POLL_INTERVAL) {
             processEventQueue();
             _lastUpdate = now;
         }
 
-        // Traitement du buffer série
-        processSerialInput(now);
+        // Check Serial input
+        while (_serial.available()) {
+            char c = _serial.read();
+            if (_bufferIndex == 0 && c == '>') {
+                // Start of API command
+                _buffer[_bufferIndex++] = c;
+            } else if (_bufferIndex > 0) {
+                // Continue API command
+                _buffer[_bufferIndex++] = c;
+                if (c == '\n' || _bufferIndex >= SERIAL_BUFFER_SIZE) {
+                    _buffer[_bufferIndex - 1] = '\0';
+                    handleCommand(String(_buffer));
+                    _bufferIndex = 0;
+                }
+            } else {
+                // Regular traffic goes to proxy
+                _proxy.write(c);
+            }
+        }
+
+        // Check proxy buffer and forward to Serial
+        while (_proxy.available()) {
+            _serial.write(_proxy.read());
+        }
     }
 
     void pushEvent(const String& event, const JsonObject& data) override {
@@ -221,19 +245,19 @@ private:
     };
 
     Stream& _serial;
+    SerialProxy _proxy;  // Le proxy est maintenant interne à SerialAPIEndpoint
     unsigned long _lastUpdate;
     std::queue<String> _eventQueue;
     SerialFormatter _formatter;
     
-    // Circular buffer for serial reading
-    static constexpr size_t SERIAL_BUFFER_SIZE = 4096;
+    static constexpr size_t SERIAL_BUFFER_SIZE = 4096;  // Pour les commandes API
     char _buffer[SERIAL_BUFFER_SIZE];
     size_t _bufferIndex;
     unsigned long _lastReceiveTime;
     
-    static constexpr unsigned long SERIAL_POLL_INTERVAL = 5;    // Polling interval for events
-    static constexpr unsigned long SERIAL_TIMEOUT = 200;         // Timeout in ms
-    static constexpr size_t QUEUE_SIZE = 10;                     // Event message queue size
+    static constexpr unsigned long SERIAL_POLL_INTERVAL = 2;
+    static constexpr unsigned long SERIAL_TIMEOUT = 200;
+    static constexpr size_t QUEUE_SIZE = 10;
 
     void processSerialInput(unsigned long now) {
         while (_serial.available() && _bufferIndex < SERIAL_BUFFER_SIZE) {
@@ -340,5 +364,8 @@ private:
         }
     }
 };
+
+// Définition du proxy statique
+SerialProxy SerialAPIEndpoint::proxy;
 
 #endif // SERIALAPIENDPOINT_H

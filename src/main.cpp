@@ -4,16 +4,23 @@
 #include "WiFiManagerAPI.h"
 #include "APIServer.h"
 #include "WebAPIEndpoint.h"
+#include "SerialAPIEndpoint.h"
 #include "result.h"
+#include "SerialProxy.h"
+
+// Proxy server for Serial port
+#define Serial SerialAPIEndpoint::proxy
 
 // Declaration of global objects
 WiFiManager wifiManager;                                    // WiFiManager instance
 APIServer apiServer;                                        // Master API server
 WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);      // WiFiManager API interface
 WebAPIEndpoint webServer(apiServer, 80);                    // Web server endpoint (HTTP+WS)
+SerialAPIEndpoint serialAPI(apiServer);                     // Serial API endpoint
 
 void setup() {
     Serial.begin(115200);
+    delay(3000);
     Serial.println("Starting...");
 
     pinMode(LED_BUILTIN, OUTPUT);
@@ -21,6 +28,7 @@ void setup() {
 
     // Add the web server endpoint to the API server
     apiServer.addEndpoint(&webServer);  // Pass the address
+    apiServer.addEndpoint(&serialAPI);  // Pass the address
 
     // Check the filesystem
     if(!SPIFFS.begin(true)) {

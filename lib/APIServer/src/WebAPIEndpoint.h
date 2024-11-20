@@ -8,8 +8,30 @@
 #include <AsyncJson.h>
 #include <SPIFFS.h>
 #include <queue>
+#include <vector>
 
 class WebAPIEndpoint : public APIEndpoint {
+private:
+    std::vector<String> _startupLogs;
+    bool _serialReady = false;
+
+    void log(const String& message) {
+        if (!_serialReady) {
+            _startupLogs.push_back(message);
+        } else {
+            Serial.println(message);
+        }
+    }
+
+    void logf(const char* format, ...) {
+        char buffer[256];
+        va_list args;
+        va_start(args, format);
+        vsnprintf(buffer, sizeof(buffer), format, args);
+        va_end(args);
+        log(buffer);
+    }
+
 public:
     WebAPIEndpoint(APIServer& apiServer, uint16_t port) 
         : APIEndpoint(apiServer)
@@ -33,6 +55,15 @@ public:
         setupAPIRoutes();
         setupStaticFiles();
         _server.begin();
+        
+        delay(100);
+        _serialReady = true;
+        
+        Serial.println("WEBAPI: Affichage des logs de démarrage:");
+        for (const auto& logMessage : _startupLogs) {
+            Serial.println(logMessage);
+        }
+        _startupLogs.clear();
     }
 
     void poll() override {
@@ -86,18 +117,24 @@ private:
     }
 
     void setupAPIRoutes() {
+        log("WEBAPI: Configuration des routes API...");
+        
         _server.on(API_ROUTE, HTTP_GET, [this](AsyncWebServerRequest *request) {
+            log("WEBAPI: Requête GET reçue sur /api");
             auto methods = _apiServer.getAPIDoc();
             String response;
             serializeJson(methods, response);
+            logf("WEBAPI: Réponse API doc: %s", response.c_str());
             request->send(200, MIME_JSON, response);
         });
 
         // Routes pour les méthodes GET
         for (const auto& [path, method] : _apiServer.getMethods()) {
             if (method.type == APIMethodType::GET) {
+                logf("WEBAPI: Enregistrement route GET /api/%s", path.c_str());
                 _server.on(("/api/" + path).c_str(), HTTP_GET, 
                     [this, path](AsyncWebServerRequest *request) {
+                        logf("WEBAPI: Requête GET reçue sur /api/%s", path.c_str());
                         handleHTTPGet(request, path);
                     });
             }
@@ -106,9 +143,11 @@ private:
         // Routes pour les méthodes SET
         for (const auto& [path, method] : _apiServer.getMethods()) {
             if (method.type == APIMethodType::SET) {
+                logf("WEBAPI: Enregistrement route SET /api/%s", path.c_str());
                 auto handler = new AsyncCallbackJsonWebHandler(
                     ("/api/" + path).c_str(),
                     [this, path](AsyncWebServerRequest* request, JsonVariant& json) {
+                        logf("WEBAPI: Requête SET reçue sur /api/%s", path.c_str());
                         handleHTTPSet(request, path, json.as<JsonObject>());
                     }
                 );
@@ -119,6 +158,11 @@ private:
 
     void setupStaticFiles() {
         _server.serveStatic("/", SPIFFS, "/").setDefaultFile("index.html");
+        
+        _server.on("/favicon.ico", HTTP_GET, [](AsyncWebServerRequest *request) {
+            request->send(204);  // No Content
+        });
+        
         _server.onNotFound([](AsyncWebServerRequest *request) {
             request->send(404, MIME_TEXT, ERROR_NOT_FOUND);
         });
