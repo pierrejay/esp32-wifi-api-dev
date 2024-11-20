@@ -119,14 +119,6 @@ api.methods:
 - Pretty-printed API documentation
 - Command parsing with timeout detection
 
-### Limitations
-- Maximum command length: 4096 bytes
-- Queue size for events: 10 messages
-- Serial must be initialized before endpoint (typically in setup())
-- Commands must start with '>' to be processed
-- Command timeout: 200ms by default
-- Event/serial polling interval: 2ms by default
-
 ### Serial Port Sharing
 The SerialAPIEndpoint implements a transparent proxy mechanism that allows sharing the serial port between API commands and regular application traffic:
 
@@ -146,6 +138,15 @@ Serial.println("Done");           // Regular application output
 This allows seamless integration of the Serial API without modifying existing application code that uses the serial port for debugging or other purposes.
 
 Note: The proxy buffer size is limited to 1024 bytes. If your application sends large amounts of data through Serial, you may need to adjust `SerialProxy::BUFFER_SIZE`.
+
+### Limitations
+- Maximum command length: 4096 bytes
+- Queue size for events: 10 messages
+- Serial must be initialized before endpoint (typically in setup())
+- Commands must start with '>' to be processed
+- Command timeout: 200ms by default
+- Event queue polling interval: 100ms by default
+- Interval between API & proxy messages: 5ms by default
 
 ### Tips
 - Make sure the buffer size is big enough to handle the longest command. 

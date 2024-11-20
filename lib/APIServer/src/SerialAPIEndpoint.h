@@ -14,7 +14,7 @@ public:
     SerialAPIEndpoint(APIServer& apiServer, Stream& serial = Serial) 
         : APIEndpoint(apiServer)
         , _serial(serial)
-        , _lastUpdate(0)
+        , _lastEventQueueUpdate(0)
         , _bufferIndex(0)
         , _lastReceiveTime(0)
     {
@@ -28,10 +28,20 @@ public:
     void poll() override {
         unsigned long now = millis();
 
-        // Process outgoing events queue
-        if (now - _lastUpdate > SERIAL_POLL_INTERVAL) {
+        // Si données dans le proxy et délai écoulé depuis dernière écriture
+        if (_proxy.available() && (now - _lastProxyWrite > MESSAGE_COMPLETE_DELAY)) {
+            // Écrire tout le message d'un coup
+            while (_proxy.available()) {
+                _serial.write(_proxy.read());
+                _serial.flush();
+            }
+            _lastProxyWrite = now;
+        }
+
+        // Process events
+        if (now - _lastEventQueueUpdate > EVENT_QUEUE_POLL_INTERVAL) {    
             processEventQueue();
-            _lastUpdate = now;
+            _lastEventQueueUpdate = now;
         }
 
         // Check Serial input
@@ -244,21 +254,6 @@ private:
         }
     };
 
-    Stream& _serial;
-    SerialProxy _proxy;  // Le proxy est maintenant interne à SerialAPIEndpoint
-    unsigned long _lastUpdate;
-    std::queue<String> _eventQueue;
-    SerialFormatter _formatter;
-    
-    static constexpr size_t SERIAL_BUFFER_SIZE = 4096;  // Pour les commandes API
-    char _buffer[SERIAL_BUFFER_SIZE];
-    size_t _bufferIndex;
-    unsigned long _lastReceiveTime;
-    
-    static constexpr unsigned long SERIAL_POLL_INTERVAL = 2;
-    static constexpr unsigned long SERIAL_TIMEOUT = 200;
-    static constexpr size_t QUEUE_SIZE = 10;
-
     void processSerialInput(unsigned long now) {
         while (_serial.available() && _bufferIndex < SERIAL_BUFFER_SIZE) {
             char c = _serial.read();
@@ -363,6 +358,23 @@ private:
             _eventQueue.pop();
         }
     }
+    
+    Stream& _serial;
+    SerialProxy _proxy;
+    unsigned long _lastEventQueueUpdate;
+    std::queue<String> _eventQueue;
+    SerialFormatter _formatter;
+    
+    static constexpr size_t SERIAL_BUFFER_SIZE = 4096; 
+    char _buffer[SERIAL_BUFFER_SIZE];
+    size_t _bufferIndex;
+    unsigned long _lastReceiveTime;
+    
+    static constexpr unsigned long EVENT_QUEUE_POLL_INTERVAL = 100;
+    static constexpr unsigned long SERIAL_TIMEOUT = 200;
+    static constexpr size_t QUEUE_SIZE = 10;
+    unsigned long _lastProxyWrite = 0;
+    static constexpr unsigned long MESSAGE_COMPLETE_DELAY = 5;   // 5 ms between API & proxy messages
 };
 
 // Définition du proxy statique
