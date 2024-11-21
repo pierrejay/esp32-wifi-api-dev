@@ -497,24 +497,20 @@
     /* @param JsonObject& obj : JSON object to store the results */
     /* @return void */
     void WiFiManager::getStatusToJson(JsonObject& obj) const {
-        StaticJsonDocument<1024> doc;
-        JsonObject apStatusObj = doc["ap"].to<JsonObject>();
+        JsonObject apStatusObj = obj["ap"].to<JsonObject>();
         apStatus.toJson(apStatusObj);
-        JsonObject staStatusObj = doc["sta"].to<JsonObject>();
+        JsonObject staStatusObj = obj["sta"].to<JsonObject>();
         staStatus.toJson(staStatusObj);
-        obj = doc.to<JsonObject>();
     }
 
     /* @brief Get configuration to JSON */
     /* @param JsonObject& obj : JSON object to store the results */
     /* @return void */
     void WiFiManager::getConfigToJson(JsonObject& obj) const {
-        StaticJsonDocument<1024> doc;
-        JsonObject apConfigObj = doc["ap"].to<JsonObject>();
+        JsonObject apConfigObj = obj["ap"].to<JsonObject>();
         apConfig.toJson(apConfigObj);
-        JsonObject staConfigObj = doc["sta"].to<JsonObject>();
+        JsonObject staConfigObj = obj["sta"].to<JsonObject>();
         staConfig.toJson(staConfigObj);
-        obj = doc.to<JsonObject>();
     }
 
     /* @brief Register the callback */

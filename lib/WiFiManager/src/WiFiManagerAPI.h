@@ -10,7 +10,8 @@ public:
     WiFiManagerAPI(WiFiManager& wifiManager, APIServer& apiServer) 
         : _wifiManager(wifiManager)
         , _apiServer(apiServer)
-        , _lastNotification(0) 
+        , _lastNotification(0)
+        , _lastHeartbeat(0)
     {
         // Subscribe to WiFi state changes
         _wifiManager.onStateChange([this]() {
@@ -38,8 +39,10 @@ private:
     WiFiManager& _wifiManager;
     APIServer& _apiServer;
     unsigned long _lastNotification;
+    unsigned long _lastHeartbeat;
     StaticJsonDocument<2048> _previousState;
     static constexpr unsigned long NOTIFICATION_INTERVAL = 500;
+    static constexpr unsigned long HEARTBEAT_INTERVAL = 5000;
 
     /**
      * @brief Register the methods to the API server
@@ -48,7 +51,13 @@ private:
         // GET wifi/status
         _apiServer.registerMethod("wifi/status", 
             APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                Serial.println("WIFIAPI: Exécution de GET wifi/status");
                 _wifiManager.getStatusToJson(response);
+                
+                String debug;
+                serializeJson(response, debug);
+                Serial.printf("WIFIAPI: Réponse status: %s\n", debug.c_str());
+                
                 return true;
             })
             .desc("Get WiFi status")
@@ -71,7 +80,13 @@ private:
         // GET wifi/config
         _apiServer.registerMethod("wifi/config",
             APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                Serial.println("WIFIAPI: Exécution de GET wifi/config");
                 _wifiManager.getConfigToJson(response);
+                
+                String debug;
+                serializeJson(response, debug);
+                Serial.printf("WIFIAPI: Réponse config: %s\n", debug.c_str());
+                
                 return true;
             })
             .desc("Get WiFi configuration")
@@ -99,7 +114,13 @@ private:
         // GET wifi/scan
         _apiServer.registerMethod("wifi/scan",
             APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
+                Serial.println("WIFIAPI: Exécution de GET wifi/scan");
                 _wifiManager.getAvailableNetworks(response);
+                
+                String debug;
+                serializeJson(response, debug);
+                Serial.printf("WIFIAPI: Réponse scan: %s\n", debug.c_str());
+                
                 return true;
             })
             .desc("Scan available WiFi networks")
@@ -214,6 +235,7 @@ private:
      * @return True if the notification has been sent, false otherwise
      */
     bool sendNotification(bool force = false) {
+        unsigned long now = millis();
         StaticJsonDocument<2048> newState;
         JsonObject newStatus = newState["status"].to<JsonObject>();
         JsonObject newConfig = newState["config"].to<JsonObject>();
@@ -221,10 +243,16 @@ private:
         _wifiManager.getConfigToJson(newConfig);
 
         bool changed = (force || _previousState.isNull() || newState != _previousState);
-        // If force mode on or change happened, send notification to clients
-        if (changed) {
+        bool heartbeatNeeded = (now - _lastHeartbeat >= HEARTBEAT_INTERVAL);
+        
+        if (changed || heartbeatNeeded) {
             _apiServer.broadcast("wifi/events", newState.as<JsonObject>());
             _previousState = newState;
+            _lastHeartbeat = now;
+            
+            if (heartbeatNeeded && !changed) {
+                Serial.println("WIFIAPI: Envoi du heartbeat");
+            }
             return true;    
         }
         return false;

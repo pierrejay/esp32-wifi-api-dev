@@ -15,6 +15,19 @@ private:
     std::vector<String> _startupLogs;
     bool _serialReady = false;
 
+    // Rate limiting
+    static constexpr unsigned long REQUEST_MIN_INTERVAL = 100;  // 100ms minimum between requests
+    unsigned long _lastRequestTime = 0;
+
+    bool checkRateLimit() {
+        unsigned long now = millis();
+        if (now - _lastRequestTime < REQUEST_MIN_INTERVAL) {
+            return false;
+        }
+        _lastRequestTime = now;
+        return true;
+    }
+
     void log(const String& message) {
         if (!_serialReady) {
             _startupLogs.push_back(message);
@@ -52,8 +65,11 @@ public:
     }
 
     void begin() override {
+        Serial.println("WEBAPI: Setup des routes API...");
         setupAPIRoutes();
+        Serial.println("WEBAPI: Setup des fichiers statiques...");
         setupStaticFiles();
+        Serial.println("WEBAPI: Démarrage du serveur...");
         _server.begin();
         
         delay(100);
@@ -118,15 +134,6 @@ private:
 
     void setupAPIRoutes() {
         log("WEBAPI: Configuration des routes API...");
-        
-        _server.on(API_ROUTE, HTTP_GET, [this](AsyncWebServerRequest *request) {
-            log("WEBAPI: Requête GET reçue sur /api");
-            auto methods = _apiServer.getAPIDoc();
-            String response;
-            serializeJson(methods, response);
-            logf("WEBAPI: Réponse API doc: %s", response.c_str());
-            request->send(200, MIME_JSON, response);
-        });
 
         // Routes pour les méthodes GET
         for (const auto& [path, method] : _apiServer.getMethods()) {
@@ -154,6 +161,22 @@ private:
                 _server.addHandler(handler);
             }
         }
+      
+        _server.on(API_ROUTE, HTTP_GET, [this](AsyncWebServerRequest *request) {
+            log("WEBAPI: Requête GET reçue sur /api");
+            
+            // Création d'une réponse JSON asynchrone avec une capacité de 4KB
+            AsyncJsonResponse* response = new AsyncJsonResponse(4096);
+            JsonArray methods = response->getRoot();
+            
+            // Génération de la documentation API
+            int methodCount = _apiServer.getAPIDoc(methods);
+            logf("WEBAPI: Documentation générée pour %d méthodes", methodCount);
+            
+            // Envoi de la réponse
+            response->setLength();
+            request->send(response);
+        });
     }
 
     void setupStaticFiles() {
@@ -169,28 +192,78 @@ private:
     }
 
     void handleHTTPGet(AsyncWebServerRequest* request, const String& path) {
-        StaticJsonDocument<1024> doc;
-        JsonObject response = doc.to<JsonObject>();
+        if (!checkRateLimit()) {
+            request->send(429, MIME_JSON, "{\"error\":\"Too Many Requests\"}");
+            logf("WEBAPI: handleHTTPGet - Requête GET rejetée pour %s (429 Too Many Requests)", path.c_str());
+            return;
+        }
+
+        logf("WEBAPI: handleHTTPGet - Traitement de la requête GET pour %s", path.c_str());
         
-        if (_apiServer.executeMethod(path, nullptr, response)) {
-            String responseStr;
-            serializeJson(doc, responseStr);
-            request->send(200, MIME_JSON, responseStr);
+        // Création d'une réponse JSON asynchrone (2KB, mode objet)
+        AsyncJsonResponse* response = new AsyncJsonResponse(false, 2048);
+        if (!response) {
+            logf("WEBAPI: handleHTTPGet - Erreur d'allocation mémoire pour %s", path.c_str());
+            request->send(500, MIME_JSON, "{\"error\":\"Memory allocation failed\"}");
+            return;
+        }
+        
+        JsonObject root = response->getRoot();
+        
+        logf("WEBAPI: handleHTTPGet - Appel de executeMethod pour %s", path.c_str());
+        if (_apiServer.executeMethod(path, nullptr, root)) {
+            // Debug de la réponse
+            String debugResponse;
+            serializeJson(root, debugResponse);
+            logf("WEBAPI: handleHTTPGet - Réponse générée: %s", debugResponse.c_str());
+            
+            response->setLength();
+            request->send(response);
+            logf("WEBAPI: handleHTTPGet - Réponse envoyée avec succès pour %s", path.c_str());
         } else {
+            logf("WEBAPI: handleHTTPGet - Erreur lors de l'exécution de la méthode %s", path.c_str());
+            delete response;
             request->send(400, MIME_JSON, ERROR_BAD_REQUEST);
         }
     }
 
     void handleHTTPSet(AsyncWebServerRequest* request, const String& path, 
                       const JsonObject& args) {
-        StaticJsonDocument<1024> doc;
-        JsonObject response = doc.to<JsonObject>();
+        if (!checkRateLimit()) {
+            request->send(429, MIME_JSON, "{\"error\":\"Too Many Requests\"}");
+            logf("WEBAPI: handleHTTPSet - Requête SET rejetée pour %s (429 Too Many Requests)", path.c_str());
+            return;
+        }
+
+        logf("WEBAPI: handleHTTPSet - Traitement de la requête SET pour %s", path.c_str());
         
-        if (_apiServer.executeMethod(path, &args, response)) {
-            String responseStr;
-            serializeJson(doc, responseStr);
-            request->send(200, MIME_JSON, responseStr);
+        // Debug des arguments reçus
+        String debugArgs;
+        serializeJson(args, debugArgs);
+        logf("WEBAPI: handleHTTPSet - Arguments reçus: %s", debugArgs.c_str());
+        
+        // Création d'une réponse JSON asynchrone (512B, mode objet)
+        AsyncJsonResponse* response = new AsyncJsonResponse(false, 512);
+        if (!response) {
+            logf("WEBAPI: handleHTTPSet - Erreur d'allocation mémoire pour %s", path.c_str());
+            request->send(500, MIME_JSON, "{\"error\":\"Memory allocation failed\"}");
+            return;
+        }
+        
+        JsonObject root = response->getRoot();
+        
+        if (_apiServer.executeMethod(path, &args, root)) {
+            // Debug de la réponse
+            String debugResponse;
+            serializeJson(root, debugResponse);
+            logf("WEBAPI: handleHTTPSet - Réponse générée: %s", debugResponse.c_str());
+            
+            response->setLength();
+            request->send(response);
+            logf("WEBAPI: handleHTTPSet - Réponse envoyée avec succès pour %s", path.c_str());
         } else {
+            logf("WEBAPI: handleHTTPSet - Erreur lors de l'exécution de la méthode %s", path.c_str());
+            delete response;  // Important de libérer la mémoire si on n'utilise pas la réponse
             request->send(400, MIME_JSON, ERROR_BAD_REQUEST);
         }
     }

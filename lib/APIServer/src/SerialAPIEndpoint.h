@@ -209,15 +209,18 @@ private:
         }
 
         String formatAPIList(const JsonArray& methods) {
-            String response = "api.methods:";
+            String response = "\n";
             
             for (JsonVariant method : methods) {
-                response += "\n  " + method["path"].as<String>() + ":";
-                response += "\n    type=" + method["type"].as<String>() + ",";
-                response += "\n    desc=" + method["desc"].as<String>() + ",";
+                // Nom de la méthode avec indentation
+                response += "    " + method["path"].as<String>() + "\n";
                 
-                // Add protocols
-                response += "\n    protocols=";
+                // Propriétés de base
+                response += "    ├── type: " + method["type"].as<String>() + "\n";
+                response += "    ├── desc: " + method["desc"].as<String>() + "\n";
+                
+                // Protocols
+                response += "    ├── protocols: ";
                 JsonArray protocols = method["protocols"].as<JsonArray>();
                 bool first = true;
                 for (JsonVariant proto : protocols) {
@@ -225,21 +228,35 @@ private:
                     response += proto.as<String>();
                     first = false;
                 }
+                response += "\n";
                 
-                // Add parameters if present
+                // Paramètres si présents
                 if (method.containsKey("params")) {
-                    response += ",\n";
-                    for (JsonPair p : method["params"].as<JsonObject>()) {
-                        response += "    params." + String(p.key().c_str()) + 
-                                  "=" + p.value().as<String>() + ",\n";
+                    response += "    ├── params:\n";
+                    JsonObject params = method["params"].as<JsonObject>();
+                    int paramCount = params.size();
+                    int currentParam = 0;
+                    
+                    for (JsonPair p : params) {
+                        currentParam++;
+                        bool isLastParam = (currentParam == paramCount);
+                        response += "    │   " + String(isLastParam ? "└── " : "├── ") +
+                                   String(p.key().c_str()) + ": " + p.value().as<String>() + "\n";
                     }
                 }
                 
-                // Add response parameters if present
+                // Paramètres de réponse si présents
                 if (method.containsKey("response")) {
-                    for (JsonPair p : method["response"].as<JsonObject>()) {
-                        response += "    response." + String(p.key().c_str()) + 
-                                  "=" + p.value().as<String>() + ",\n";
+                    response += "    └── response:\n";
+                    JsonObject resp = method["response"].as<JsonObject>();
+                    int respCount = resp.size();
+                    int currentResp = 0;
+                    
+                    for (JsonPair p : resp) {
+                        currentResp++;
+                        bool isLastResp = (currentResp == respCount);
+                        response += "        " + String(isLastResp ? "└── " : "├── ") +
+                                   String(p.key().c_str()) + ": " + p.value().as<String>() + "\n";
                     }
                 }
                 
@@ -308,7 +325,8 @@ private:
 
         // Handle GET api command separately
         if (cmd.method == "GET" && cmd.path == "api") {
-            auto methods = _apiServer.getAPIDoc();
+            JsonArray methods;
+            int methodCount = _apiServer.getAPIDoc(methods);
             _serial.print("< GET api\n");
             _serial.println(_formatter.formatAPIList(methods));
             return;

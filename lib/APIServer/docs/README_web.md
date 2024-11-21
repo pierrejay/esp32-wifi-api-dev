@@ -135,8 +135,15 @@ Events are pushed from server to client as JSON messages:
 - Automatic API documentation endpoint
 - No authentication (designed for local network use)
 
+### JSON buffers
+4 static JSON buffers are used to avoid dynamic memory allocation for request/response handling. Their size is set depending on the average size of the response:
+- API documentation: 4096 bytes (full API description)
+- GET requests: 2048 bytes (response JSON object)
+- EVT requests: 1024 bytes (event data)
+- SET requests: 512 bytes (short answers e.g. "success": true)
+Buffer size must be increased if you use large JSON objects for responses, especially for large APIs that contain many methods.
+
 ### Limitations
-- Maximum JSON document size: 1024 bytes
 - WebSocket events queue size: 10 messages
 - WebSocket polling interval: 50ms
 - WebSocket API disabled by default (WS_API_ENABLED = false)

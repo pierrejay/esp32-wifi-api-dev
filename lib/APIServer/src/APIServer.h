@@ -35,7 +35,7 @@ struct APIParam {
 
     // Overloaded constructor for recursive nested objects
     APIParam(const String& n, const std::initializer_list<APIParam>& props, bool r = true)
-        : name(n), type("obj"), required(r), properties(props) {}
+        : name(n), type("object"), required(r), properties(props) {}
 };
 
 struct APIMethod {
@@ -120,6 +120,7 @@ public:
      * @brief Initialize all endpoints
      */
     void begin() {
+        Serial.println("APISERVER: Démarrage des endpoints...");
         for (APIEndpoint* endpoint : _endpoints) {
             endpoint->begin();
         }
@@ -181,17 +182,15 @@ public:
      * @brief Get the API documentation
      * @return The API documentation
      */
-    JsonArray getAPIDoc() {
-        StaticJsonDocument<2048> doc;
-        JsonArray methods = doc.to<JsonArray>();
+    int getAPIDoc(JsonArray& output) {
         
         // Recursive function to add object parameters in the JSON document
         std::function<void(JsonObject&, const APIParam&)> addObjectParams = 
             [&addObjectParams](JsonObject& obj, const APIParam& param) {
-                if (param.type == "obj" && !param.properties.empty()) {
+                if (param.type == "object" && !param.properties.empty()) {
                     JsonObject nested = obj.createNestedObject(param.name);
                     for (const auto& prop : param.properties) {
-                        if (prop.type == "obj") {
+                        if (prop.type == "object") {
                             addObjectParams(nested, prop);
                         } else {
                             nested[prop.name] = prop.required ? prop.type : prop.type + "*";
@@ -202,8 +201,11 @@ public:
                 }
             };
 
+        int methodCount = 0; 
         for (const auto& [path, method] : _methods) {
-            JsonObject methodObj = methods.createNestedObject();
+            StaticJsonDocument<2048> doc;
+            methodCount++;
+            JsonObject methodObj = doc.to<JsonObject>();
             methodObj["path"] = path;
             methodObj["type"] = toString(method.type);
             methodObj["desc"] = method.description;
@@ -239,9 +241,14 @@ public:
                     addObjectParams(response, param);
                 }
             }
+
+            // Add the method to the output array
+            output.add(methodObj);
         }
         
-        return methods;
+        Serial.printf("APISERVER: Documentation générée pour %d méthodes\n", methodCount);
+        
+        return methodCount;
     }
 
     /**
