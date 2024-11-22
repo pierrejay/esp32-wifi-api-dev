@@ -61,9 +61,9 @@ graph TB
     end
 
     subgraph "Endpoints"
-        EP1[Endpoint 1<br>/api/resource1]
-        EP2[Endpoint 2<br>/api/resource2]
-        EP3[Endpoint 3<br>/api/resource3]
+        EP1[Endpoint 1<br>e.g. HTTP]
+        EP2[Endpoint 2<br>e.g. MQTT]
+        EP3[Endpoint 3<br>e.g. Serial]
     end
 
     %% Connexions Application 1
@@ -75,9 +75,9 @@ graph TB
     API2 --> |register methods| AS
 
     %% Connexions API Server vers Endpoints
-    AS --> |routes req/resp/events| EP1
-    AS --> |routes req/resp/events| EP2
-    AS --> |routes req/resp/events| EP3
+    AS --> |routes requests & events| EP1
+    AS --> |routes requests & events| EP2
+    AS --> |routes requests & events| EP3
 
     class BL1,BL2 businessLogic
     class API1,API2 apiInterface
@@ -89,15 +89,14 @@ graph TB
 
 ```mermaid
 sequenceDiagram
-    %% Définition des participants
     participant BL as Business Logic
     participant API as API Interface
     participant AS as API Server
     participant EP as Endpoint
     participant CL as Client
-  
-    %% Ingress flow (request)
-    Note over CL,BL: Request Flow (Montant)
+
+    rect rgba(255, 200, 200, 0.1)
+    Note over CL,BL: Request Flow (ingress)
     CL->>EP: Sends request
     EP->>AS: Forward request
     AS->>API: Routes to interface
@@ -108,8 +107,8 @@ sequenceDiagram
     EP-->>CL: Sends response to client
     end
 
-    %% Egress flow (event)
-    Note over BL,CL: Event Flow (Descendant)
+    rect rgba(200, 255, 200, 0.1)
+    Note over BL,CL: Event Flow (egress)
     BL->>API: Notifies event
     API->>AS: Broadcasts event
     AS->>EP: Routes to all endpoints
