@@ -56,33 +56,45 @@ graph TB
         end
     end
 
-    subgraph "API Server"
+    subgraph "API Layer"
         AS[API Server]
-    end
-
-    subgraph "Endpoints"
         EP1[Endpoint 1<br>e.g. HTTP]
         EP2[Endpoint 2<br>e.g. MQTT]
         EP3[Endpoint 3<br>e.g. Serial]
     end
 
+    subgraph "Clients"
+        CL1[Client 1]
+        CL2[Client 2]
+        CL3[Client 3]
+        CLX[...]
+        CLN[Client N]
+    end
+
     %% Connexions Application 1
-    BL1 --> |gives access| API1
-    API1 --> |registers methods| AS
+    BL1 <--> |direct function calls| API1
+    API1 <--> |API methods| AS
 
     %% Connexions Application 2
-    BL2 --> |gives access| API2
-    API2 --> |registers methods| AS
+    BL2 <--> |direct function calls| API2
+    API2 <--> |API methods| AS
 
     %% Connexions API Server vers Endpoints
-    AS --> |sends data| EP1
-    AS --> |sends data| EP2
-    AS --> |sends data| EP3
+    AS <--> |requests/events| EP1
+    AS <--> |requests/events| EP2
+    AS <--> |requests/events| EP3
+
+    %% Connexions clients vers Endpoints
+    EP1 <--> |TCP/IP|CL1
+    EP1 <--> |TCP/IP|CL2
+    EP2 <--> |TCP/IP|CL3
+    EP3 <--> |Serial ASCII|CLN
 
     class BL1,BL2 businessLogic
     class API1,API2 apiInterface
     class EP1,EP2,EP3 endpoint
     class AS server
+    class CL1,CL2,CL3 clients
 ```
 
 ### Data flow diagram for request & event
