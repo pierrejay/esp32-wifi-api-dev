@@ -79,12 +79,6 @@ graph TB
     AS --> |routes req/resp/events| EP2
     AS --> |routes req/resp/events| EP3
 
-    %% Styles
-    classDef businessLogic fill:#f9f,stroke:#333,stroke-width:2px
-    classDef apiInterface fill:#bbf,stroke:#333,stroke-width:2px
-    classDef endpoint fill:#bfb,stroke:#333,stroke-width:2px
-    classDef server fill:#fbb,stroke:#333,stroke-width:2px
-
     class BL1,BL2 businessLogic
     class API1,API2 apiInterface
     class EP1,EP2,EP3 endpoint
@@ -103,7 +97,6 @@ sequenceDiagram
     participant CL as Client
   
     %% Ingress flow (request)
-    rect rgb(255, 200, 200)
     Note over CL,BL: Request Flow (Montant)
     CL->>EP: Sends request
     EP->>AS: Forward request
@@ -116,7 +109,6 @@ sequenceDiagram
     end
 
     %% Egress flow (event)
-    rect rgb(200, 255, 200)
     Note over BL,CL: Event Flow (Descendant)
     BL->>API: Notifies event
     API->>AS: Broadcasts event
