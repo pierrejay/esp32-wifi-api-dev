@@ -119,10 +119,10 @@ sequenceDiagram
 ## Implementation
 
 ### Process
-1. Create dedicated API interface class for each component (e.g. `WiFiManagerAPI.h`)
+1. Create dedicated application API interface class for each component (e.g. `WiFiManagerAPI.h`)
 2. Declare API methods, events & handlers (setters/getters with business logic)
-3. Declare & initialize API objects & endpoints in main
-4. Poll regularly, or run within a task
+3. Declare & initialize API & endpoints instances in main
+4. Poll APIServer regularly, or run within a task
 
 > **Error handling note:**  
 > Parameter type/value checking & error handling is responsibility of business logic.
@@ -279,15 +279,17 @@ apiServer.registerMethod("wifi/events",
 ```
 
 ### Broadcasting Events
-Unlike other methods, events must be called by the application API, for example to signal a status change.
+Unlike other methods, events are not handled automatically upon client request, they must be called by the application API (for example to signal a status change to all connected clients).
 
 ```cpp
+// Inside application API
 StaticJsonDocument<1024> newState;           // Create new JsonDocument
 JsonObject status = newState["status"].to<JsonObject>();
 _wifiManager.getStatusToJson(status);        // Fetch wifi status
 _apiServer.broadcast("wifi/events", status); // Push event
 ```
-
+To avoid managing event notifications inside business logic, it is possible to setup a periodic check for changes in application data within the application API. 
+A better solution (but introducing a small degree of coupling) is to use the Observer pattern to inform the application API that a change happened for example. With this solution, formatting and sending the event to the APIServer is automatically handled by the application API when the application data notifies a change or action.
 > **Note:** Events are automatically transmitted to all endpoints that implement protocols handling events (Websocket, MQTT for example, defined in classes derived from APIEndpoint).
 
 ### Naming Patterns
@@ -407,6 +409,8 @@ public:
         
         // Process outgoing events queue
         _processEventQueue();
+
+        // Other actions (might include flush disconnections, etc.)
     }
 
     void pushEvent(const String& event, const JsonObject& data) override {
