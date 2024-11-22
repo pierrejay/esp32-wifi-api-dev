@@ -126,7 +126,7 @@ The `GET api` command returns a complete description of available endpoints:
 The SerialAPIEndpoint implements a transparent proxy mechanism that allows sharing the serial port between API commands and regular application traffic:
 
 - Commands starting with '>' are intercepted and processed by the API
-- All other traffic is buffered through a 1KB circular buffer
+- All other traffic is buffered through two 1KB circular buffers (RX/TX)
 - The proxy is automatically installed by defining `Serial` as `SerialAPIEndpoint::proxy`
 - Application code can use `Serial` normally without being aware of the API
 
@@ -154,6 +154,47 @@ Note: The proxy buffer size is limited to 1024 bytes. If your application sends 
 ### Tips
 - Make sure the buffer size is big enough to handle the longest command. 
 - If necessary, split the command into multiple smaller commands to reduce buffer size as much as possible.
+
+### State Machine
+The SerialAPIEndpoint uses a state machine to handle all serial communications efficiently.
+The goal is to correctly arbitrate between API and proxy traffic over the access to the Serial port, but also to avoid blocking the thread with a non-blocking approach.
+
+States:
+- `NONE`: Idle state, waiting for input or events
+- `PROXY_RECEIVE`: Receiving regular serial data
+- `PROXY_SEND`: Sending buffered proxy data
+- `API_RECEIVE`: Building an API command
+- `API_PROCESS`: Processing the command
+- `API_RESPOND`: Sending API response
+- `EVENT`: Sending event notification
+
+Each state transition is managed with a grace period to ensure reliable communication:
+- After sending data (PROXY_SEND, API_RESPOND, EVENT): waits 50ms before accepting new input
+- During command reception (API_RECEIVE, PROXY_RECEIVE): times out after 50ms of inactivity
+- Between proxy operations: ensures 50ms spacing
+
+To allow large messages to be processed in a non-blocking way, received serial messages are processed by chunks of 128 bytes at each step. Responses and events are sent in full by default to increase the reliability of the communication (no interruption possible).
+> **Note:**  
+> - The chunk size can be adjusted by changing the `TX_CHUNK_SIZE` & `RX_CHUNK_SIZE` constants. Be careful with these settings, too small values may degrade the performance, too high values may deplete the RX buffer quickly or overflow the TX buffer.
+> - The default API write cycle could block the main thread due to serial communication, in particular with long messages (e.g. ~500ms for a 4096 byte message @ 9600 bps). 
+> - Optionally, you could set the maximal number of chunks to process at each write cycle by setting the "MAX_TX_CHUNKS" variable. Default value 0 means all chunks will be sent (blocking).
+
+This approach:
+- Avoids blocking the thread by returning to the parent loop or task regularly
+- Prevents message collisions
+- Ensures complete transmission of responses
+- Maintains clean separation between API and proxy traffic
+- Handles timeouts gracefully with appropriate error messages
+
+Example timing sequence:
+```
+[NONE] → received '>' → [API_RECEIVE]
+[API_RECEIVE] → received complete command → [API_PROCESS]
+[API_PROCESS] → command processed → [API_RESPOND]
+[API_RESPOND] → response sent → wait 50ms → [NONE]
+```
+
+The state machine also manages the event queue, sending events only when the system is idle and respecting the same grace periods to maintain reliable communication.
 
 ### Usage
 ```cpp

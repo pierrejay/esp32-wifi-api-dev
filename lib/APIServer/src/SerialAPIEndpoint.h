@@ -1,11 +1,12 @@
 #ifndef SERIALAPIENDPOINT_H
 #define SERIALAPIENDPOINT_H
 
+#include <ArduinoJson.h>
+#include <queue>
 #include "APIServer.h"
 #include "APIEndpoint.h"
 #include "SerialProxy.h"
-#include <ArduinoJson.h>
-#include <queue>
+#include "SerialFormatter.h"
 
 class SerialAPIEndpoint : public APIEndpoint {
 public:
@@ -14,9 +15,8 @@ public:
     SerialAPIEndpoint(APIServer& apiServer, Stream& serial = Serial) 
         : APIEndpoint(apiServer)
         , _serial(serial)
-        , _lastEventQueueUpdate(0)
+        , _lastTxRx(0)
         , _bufferIndex(0)
-        , _lastReceiveTime(0)
     {
         // Declare supported protocols
         addProtocol("serial", GET | SET | EVT);
@@ -26,48 +26,7 @@ public:
     }
 
     void poll() override {
-        unsigned long now = millis();
-
-        // If proxy has data and delay elapsed since last write
-        if (_proxy.available() && (now - _lastProxyWrite > MESSAGE_COMPLETE_DELAY)) {
-            // Write all data at once
-            while (_proxy.available()) {
-                _serial.write(_proxy.read());
-                _serial.flush();
-            }
-            _lastProxyWrite = now;
-        }
-
-        // Process events
-        if (now - _lastEventQueueUpdate > EVENT_QUEUE_POLL_INTERVAL) {    
-            processEventQueue();
-            _lastEventQueueUpdate = now;
-        }
-
-        // Check Serial input
-        while (_serial.available()) {
-            char c = _serial.read();
-            if (_bufferIndex == 0 && c == '>') {
-                // Start of API command
-                _buffer[_bufferIndex++] = c;
-            } else if (_bufferIndex > 0) {
-                // Continue API command
-                _buffer[_bufferIndex++] = c;
-                if (c == '\n' || _bufferIndex >= SERIAL_BUFFER_SIZE) {
-                    _buffer[_bufferIndex - 1] = '\0';
-                    handleCommand(String(_buffer));
-                    _bufferIndex = 0;
-                }
-            } else {
-                // Regular traffic goes to proxy
-                _proxy.write(c);
-            }
-        }
-
-        // Check proxy buffer and forward to Serial
-        while (_proxy.available()) {
-            _serial.write(_proxy.read());
-        }
+        processStateMachine();      // Machine à états unique qui gère tout
     }
 
     void pushEvent(const String& event, const JsonObject& data) override {
@@ -78,7 +37,17 @@ public:
     }
 
 private:
-    // SerialCommand structure for parsed commands
+    enum class SerialMode {
+        NONE,           // En attente du premier caractère
+        PROXY_RECEIVE,  // Réception de données pour le proxy
+        PROXY_SEND,     // Envoi de données du proxy
+        API_RECEIVE,    // Construction d'une commande API
+        API_PROCESS,    // Traitement de la commande API
+        API_RESPOND,    // Envoi de la réponse API
+        EVENT           // Envoi d'un événement
+    };
+
+    // Structure pour une commande API parsée
     struct SerialCommand {
         String method;      // GET/SET
         String path;        // API path
@@ -100,214 +69,186 @@ private:
         }
     };
 
-    class SerialFormatter {
-    public:
-        String formatResponse(const String& method, const String& path, const JsonObject& response) {
-            String result = method + " " + path + ":";
-            bool first = true;
+    // Structure pour une commande API en attente
+    struct PendingCommand {
+        String command;     // Commande reçue
+        String response;    // Réponse à envoyer
+        size_t sendIndex;   // Position dans la réponse
+        bool processed;     // Indique si la commande a été traitée
+        
+        PendingCommand() 
+            : sendIndex(0)
+            , processed(false) {}
             
-            std::function<void(const JsonObject&, const String&)> addParams = 
-                [&](const JsonObject& obj, const String& prefix) {
-                    for (JsonPair p : obj) {
-                        String key = prefix.isEmpty() ? p.key().c_str() 
-                                                    : prefix + "." + p.key().c_str();
-                        if (p.value().is<JsonObject>()) {
-                            addParams(p.value().as<JsonObject>(), key);
-                        } else {
-                            if (!first) result += ",";
-                            result += " " + key + "=";
-                            
-                            // Handle different types
-                            if (p.value().is<bool>())
-                                result += p.value().as<bool>() ? "true" : "false";
-                            else if (p.value().is<int>())
-                                result += String(p.value().as<int>());
-                            else if (p.value().is<float>())
-                                result += String(p.value().as<float>());
-                            else
-                                result += p.value().as<String>();
-                                
-                            first = false;
-                        }
-                    }
-                };
-            
-            addParams(response, "");
-            return result;
-        }
-
-        String formatEvent(const String& event, const JsonObject& data) {
-            return "EVT " + event + ": " + formatResponse("EVT", event, data);
-        }
-
-        SerialCommand parseCommand(const String& line) {
-            SerialCommand cmd;
-            
-            // Basic validation
-            if (line.length() < 4) return cmd;  // Minimum "> GET"
-            
-            // Remove prompt if present
-            String input = line;
-            if (line.startsWith("> ")) {
-                input = line.substring(2);
-            }
-            
-            // Parse method
-            int spacePos = input.indexOf(' ');
-            if (spacePos == -1) return cmd;
-            
-            cmd.method = input.substring(0, spacePos);
-            if (cmd.method != "GET" && cmd.method != "SET" && cmd.method != "LIST") return cmd;
-            
-            // Parse path
-            input = input.substring(spacePos + 1);
-            int colonPos = input.indexOf(':');
-            
-            if (colonPos == -1) {
-                // No parameters
-                cmd.path = input;
-            } else {
-                // Has parameters
-                cmd.path = input.substring(0, colonPos);
-                String params = input.substring(colonPos + 1);
-                
-                // Split parameters
-                int start = 0;
-                bool inQuotes = false;
-                
-                for (size_t i = 0; i < params.length(); i++) {
-                    char c = params[i];
-                    if (c == '"') inQuotes = !inQuotes;
-                    else if ((c == ',' || i == params.length() - 1) && !inQuotes) {
-                        // Extract parameter
-                        String param = params.substring(start, i == params.length() - 1 ? i + 1 : i);
-                        param.trim();
-                        
-                        // Parse key=value
-                        int equalPos = param.indexOf('=');
-                        if (equalPos != -1) {
-                            String key = param.substring(0, equalPos);
-                            String value = param.substring(equalPos + 1);
-                            key.trim();
-                            value.trim();
-                            
-                            // Remove quotes if present
-                            if (value.startsWith("\"") && value.endsWith("\"")) {
-                                value = value.substring(1, value.length() - 1);
-                            }
-                            
-                            cmd.params[key] = value;
-                        }
-                        
-                        start = i + 1;
-                    }
-                }
-            }
-            
-            cmd.valid = true;
-            return cmd;
-        }
-
-        String formatAPIList(const JsonArray& methods) {
-            String response = "\n";
-            
-            for (JsonVariant method : methods) {
-                // Nom de la méthode avec indentation
-                response += "    " + method["path"].as<String>() + "\n";
-                
-                // Propriétés de base
-                response += "    ├── type: " + method["type"].as<String>() + "\n";
-                response += "    ├── desc: " + method["desc"].as<String>() + "\n";
-                
-                // Protocols
-                response += "    ├── protocols: ";
-                JsonArray protocols = method["protocols"].as<JsonArray>();
-                bool first = true;
-                for (JsonVariant proto : protocols) {
-                    if (!first) response += "|";
-                    response += proto.as<String>();
-                    first = false;
-                }
-                response += "\n";
-                
-                // Paramètres si présents
-                if (method.containsKey("params")) {
-                    response += "    ├── params:\n";
-                    JsonObject params = method["params"].as<JsonObject>();
-                    int paramCount = params.size();
-                    int currentParam = 0;
-                    
-                    for (JsonPair p : params) {
-                        currentParam++;
-                        bool isLastParam = (currentParam == paramCount);
-                        response += "    │   " + String(isLastParam ? "└── " : "├── ") +
-                                   String(p.key().c_str()) + ": " + p.value().as<String>() + "\n";
-                    }
-                }
-                
-                // Paramètres de réponse si présents
-                if (method.containsKey("response")) {
-                    response += "    └── response:\n";
-                    JsonObject resp = method["response"].as<JsonObject>();
-                    int respCount = resp.size();
-                    int currentResp = 0;
-                    
-                    for (JsonPair p : resp) {
-                        currentResp++;
-                        bool isLastResp = (currentResp == respCount);
-                        response += "        " + String(isLastResp ? "└── " : "├── ") +
-                                   String(p.key().c_str()) + ": " + p.value().as<String>() + "\n";
-                    }
-                }
-                
-                response += "\n";
-            }
-            
-            return response;
-        }
-
-        String formatError(const String& method, const String& path, const String& error) {
-            return method + " " + path + ": error=" + error;
-        }
+        PendingCommand(const String& cmd) 
+            : command(cmd)
+            , sendIndex(0)
+            , processed(false) {}
     };
 
-    void processSerialInput(unsigned long now) {
-        while (_serial.available() && _bufferIndex < SERIAL_BUFFER_SIZE) {
-            char c = _serial.read();
+
+    inline SerialCommand parseCommand(const String& line) {
+        SerialCommand cmd;
+        _formatter.parseCommandLine(line, cmd.method, cmd.path, cmd.params);
+        
+        // Valider la commande
+        if (!cmd.method.isEmpty() && !cmd.path.isEmpty() && 
+            (cmd.method == "GET" || cmd.method == "SET" || cmd.method == "LIST")) {
+            cmd.valid = true;
+        }
+        
+        return cmd;
+    }
+
             
-            // Update the last receive timestamp
-            _lastReceiveTime = now;
-            
-            // Store the character in the buffer
-            _buffer[_bufferIndex++] = c;
-            
-            // If a complete line is found
-            if (c == '\n') {
-                _buffer[_bufferIndex - 1] = '\0';  // Replace \n with \0
-                String line(_buffer);
-                _bufferIndex = 0;  // Reset the buffer
-                
-                // Check if the line starts with ">"
-                if (line.startsWith("> ")) {
-                    handleCommand(line);
-                }
-                return;
+
+    void processStateMachine() {
+        unsigned long now = millis();
+        size_t processedChars = 0;
+        
+        // Vérifier si on doit revenir en mode NONE (temps de répit écoulé)
+        if (now - _lastTxRx > MODE_RESET_DELAY) {
+            switch (_mode) {
+                case SerialMode::API_RECEIVE:
+                    if (_bufferOverflow) {
+                        _currentCommand.response = "< ERROR: error=command too long\n";
+                        _mode = SerialMode::API_RESPOND;
+                    } else if (_bufferIndex > 0) {
+                        _currentCommand.response = "< ERROR: error=command timeout\n";
+                        _mode = SerialMode::API_RESPOND;
+                    } else {
+                        _mode = SerialMode::NONE;
+                    }
+                    _bufferIndex = 0;
+                    _bufferOverflow = false;
+                    break;
+
+                case SerialMode::PROXY_RECEIVE:
+                case SerialMode::PROXY_SEND:
+                    _mode = SerialMode::NONE;
+                    break;
+
+                case SerialMode::API_RESPOND:
+                case SerialMode::EVENT:
+                    if (_currentCommand.sendIndex >= _currentCommand.response.length()) {
+                        if (_mode == SerialMode::EVENT) {
+                            _currentCommand = PendingCommand();
+                        }
+                        _mode = SerialMode::NONE;
+                    }
+                    break;
             }
         }
 
-        // Error handling
-        if (_bufferIndex >= SERIAL_BUFFER_SIZE) {
-            _serial.print("< ");
-            _serial.println(formatError("Error", "", "command too long"));
-            _bufferIndex = 0; 
-            return;
-        }
+        // Traitement selon l'état
+        switch (_mode) {
+            case SerialMode::NONE:
+                // Vérifier s'il y a des événements à envoyer UNIQUEMENT s'il n'y a pas de commande active
+                if (!_eventQueue.empty() && 
+                    _currentCommand.command.isEmpty() && 
+                    _currentCommand.response.isEmpty() && 
+                    _currentCommand.sendIndex == 0) {
+                    _mode = SerialMode::EVENT;
+                    break;
+                }
+                
+                // Vérifier d'abord s'il y a des entrées série
+                if (_serial.available()) {
+                    char c = _serial.read();
+                    _lastTxRx = now;
+                    if (c == '>') {
+                        _mode = SerialMode::API_RECEIVE;
+                        _buffer[0] = c;
+                        _bufferIndex = 1;
+                    } else {
+                        _mode = SerialMode::PROXY_RECEIVE;
+                        _proxy.writeToInput(c);
+                    }
+                }
+                // Sinon vérifier si le proxy a des données à envoyer
+                else if (_proxy.availableForWrite()) {
+                    _mode = SerialMode::PROXY_SEND;
+                    _lastTxRx = now;
+                }
+                break;
 
-        // Check timeout if the buffer is not empty
-        if (_bufferIndex > 0 && (now - _lastReceiveTime > SERIAL_TIMEOUT)) {
-            _serial.print("< ");
-            _serial.println(formatError("Error", "", "command timeout"));
-            _bufferIndex = 0;
+            case SerialMode::PROXY_RECEIVE:
+                while (_serial.available() && processedChars < RX_CHUNK_SIZE) {
+                    char c = _serial.read();
+                    _proxy.writeToInput(c);
+                    processedChars++;
+                    _lastTxRx = now;
+                }
+                break;
+
+            case SerialMode::PROXY_SEND:
+                if (_proxy.availableForWrite()) {
+                    size_t bytesSent = 0;
+                    while (_proxy.availableForWrite() && bytesSent < TX_CHUNK_SIZE) {
+                        int data = _proxy.readOutput();
+                        if (data == -1) break;
+                        _serial.write((uint8_t)data);
+                        bytesSent++;
+                    }
+                    if (bytesSent > 0) {
+                        _serial.flush();
+                    }
+                    _lastTxRx = now;
+                }
+                break;
+
+            case SerialMode::API_RECEIVE:
+                while (_serial.available() && processedChars < RX_CHUNK_SIZE) {
+                    char c = _serial.read();
+                    _lastTxRx = now;
+                    processedChars++;
+
+                    if (_bufferOverflow) continue;
+
+                    if (_bufferIndex < SERIAL_BUFFER_SIZE - 1) {
+                        _buffer[_bufferIndex] = c;
+                        
+                        if (c == '\n') {
+                            // Message API complet
+                            _buffer[_bufferIndex] = '\0';
+                            _currentCommand.command = String(_buffer);
+                            _mode = SerialMode::API_PROCESS;
+                            break;
+                        } else {
+                            _bufferIndex++;
+                        }
+                    } else {
+                        _bufferOverflow = true;
+                    }
+                }
+                break;
+
+            case SerialMode::API_PROCESS:
+                if (!_currentCommand.processed) {
+                    handleCommand(_currentCommand);
+                    _currentCommand.processed = true;
+                    _lastTxRx = now;
+                }
+                _mode = SerialMode::API_RESPOND;
+                break;
+
+            case SerialMode::API_RESPOND:
+            case SerialMode::EVENT:
+                // Only enter while loop if there is data to send
+                if (_currentCommand.sendIndex < _currentCommand.response.length()) {
+                    int sentChunks = 0;
+                    // If MAX_TX_CHUNKS is 0, send all chunks (blocking)
+                    while (_currentCommand.sendIndex < _currentCommand.response.length() && (MAX_TX_CHUNKS == 0 || sentChunks < MAX_TX_CHUNKS)) {
+                        size_t remaining = _currentCommand.response.length() - _currentCommand.sendIndex;
+                        size_t chunkSize = min(TX_CHUNK_SIZE, remaining);
+                        _serial.write((uint8_t*)&_currentCommand.response[_currentCommand.sendIndex], chunkSize);
+                        _serial.flush();
+                        _currentCommand.sendIndex += chunkSize;
+                        sentChunks++;
+                    }
+                    _lastTxRx = now; // Reset timer after sending data
+                }
+                break;
         }
     }
 
@@ -315,11 +256,16 @@ private:
         return _formatter.formatError(method, path, error);
     }
 
-    void handleCommand(const String& line) {
-        auto cmd = _formatter.parseCommand(line);
+    void handleCommand(PendingCommand& pendingCmd) {
+        SerialCommand cmd;
+        _formatter.parseCommandLine(pendingCmd.command, cmd.method, cmd.path, cmd.params);
+        
+        // Valider la commande
+        cmd.valid = !cmd.method.isEmpty() && !cmd.path.isEmpty() && 
+            (cmd.method == "GET" || cmd.method == "SET" || cmd.method == "LIST");
+
         if (!cmd.valid) {
-            _serial.print("< ");
-            _serial.println(formatError(cmd.method, cmd.path, "invalid command"));
+            pendingCmd.response = "< " + formatError(cmd.method, cmd.path, "invalid command");
             return;
         }
 
@@ -327,8 +273,8 @@ private:
         if (cmd.method == "GET" && cmd.path == "api") {
             JsonArray methods;
             int methodCount = _apiServer.getAPIDoc(methods);
-            _serial.print("< GET api\n");
-            _serial.println(_formatter.formatAPIList(methods));
+            pendingCmd.response = "< GET api\n";
+            pendingCmd.response += _formatter.formatAPIList(methods);
             return;
         }
 
@@ -361,38 +307,35 @@ private:
         JsonObject response = responseDoc.to<JsonObject>();
         
         if (_apiServer.executeMethod(cmd.path, cmd.params.empty() ? nullptr : &args, response)) {
-            _serial.print("< ");
-            _serial.println(_formatter.formatResponse(cmd.method, cmd.path, response));
+            pendingCmd.response = "< " + _formatter.formatResponse(cmd.method, cmd.path, response);
         } else {
-            _serial.print("< ");
-            _serial.println(formatError(cmd.method, cmd.path, "wrong request or parameters"));
-        }
-    }
-
-    void processEventQueue() {
-        while (!_eventQueue.empty()) {
-            _serial.print("< ");
-            _serial.println(_eventQueue.front());
-            _eventQueue.pop();
+            pendingCmd.response = "< " + formatError(cmd.method, cmd.path, "wrong request or parameters");
         }
     }
 
     Stream& _serial;
     SerialProxy _proxy;
-    unsigned long _lastEventQueueUpdate;
     std::queue<String> _eventQueue;
     SerialFormatter _formatter;
     
     static constexpr size_t SERIAL_BUFFER_SIZE = 4096; 
     char _buffer[SERIAL_BUFFER_SIZE];
     size_t _bufferIndex;
-    unsigned long _lastReceiveTime;
+    unsigned long _lastTxRx;
     
-    static constexpr unsigned long EVENT_QUEUE_POLL_INTERVAL = 100;
-    static constexpr unsigned long SERIAL_TIMEOUT = 200;
     static constexpr size_t QUEUE_SIZE = 10;
-    unsigned long _lastProxyWrite = 0;
-    static constexpr unsigned long MESSAGE_COMPLETE_DELAY = 5;   // 5 ms between API & proxy messages
+    static constexpr size_t RX_CHUNK_SIZE = 256; // =1 full hardware buffer (~30ms @ 9600bps)
+    static constexpr size_t TX_CHUNK_SIZE = 128; // =1/2 hardware buffer
+    static constexpr size_t MAX_TX_CHUNKS = 0; // Maximal number of chunks to process at each write cycle (0 = all chunks, blocking)
+
+    SerialMode _mode = SerialMode::NONE;
+    bool _bufferOverflow = false;
+    static constexpr unsigned long MODE_RESET_DELAY = 50;  // Temps de répit entre les modes
+
+    PendingCommand _currentCommand;
+
+    // Limit number of characters processed per cycle to avoid blocking the thread on long messages
+    
 };
 
 // Définition du proxy statique
