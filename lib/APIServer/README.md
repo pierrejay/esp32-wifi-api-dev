@@ -5,9 +5,9 @@
 - [Implementation](#implementation)
 - [API Method Declaration](#api-method-declaration)
 - [Documentation](#documentation)
-- [Custom](#custom)
-- [Implementation Details](#implementation-details)
 - [Available Implementations](#available-implementations)
+- [Creating a Custom API Server](#creating-a-custom-api-server)
+- [Implementation Details](#implementation-details)
 
 ## Architecture
 
@@ -40,6 +40,90 @@ The APIServer library addresses a common challenge in embedded systems developme
   - Type (GET/SET/EVT)
   - Stores parameters, response & callback
   - Builder pattern for declaration & auto-documentation
+
+### Architecture diagram
+```mermaid
+graph TB
+    subgraph "Business Logic"
+        subgraph "Application 1"
+            BL1[App methods 1]
+            API1[API interface 1]
+        end
+
+        subgraph "Application 2"
+            BL2[App methods 2]
+            API2[API interface 2]
+        end
+    end
+
+    subgraph "API Server"
+        AS[API Server]
+    end
+
+    subgraph "Endpoints"
+        EP1[Endpoint 1<br>/api/resource1]
+        EP2[Endpoint 2<br>/api/resource2]
+        EP3[Endpoint 3<br>/api/resource3]
+    end
+
+    %% Connexions Application 1
+    BL1 --> API1
+    API1 --> |register methods| AS
+
+    %% Connexions Application 2
+    BL2 --> API2
+    API2 --> |register methods| AS
+
+    %% Connexions API Server vers Endpoints
+    AS --> |routes req/resp/events| EP1
+    AS --> |routes req/resp/events| EP2
+    AS --> |routes req/resp/events| EP3
+
+    %% Styles
+    classDef businessLogic fill:#f9f,stroke:#333,stroke-width:2px
+    classDef apiInterface fill:#bbf,stroke:#333,stroke-width:2px
+    classDef endpoint fill:#bfb,stroke:#333,stroke-width:2px
+    classDef server fill:#fbb,stroke:#333,stroke-width:2px
+
+    class BL1,BL2 businessLogic
+    class API1,API2 apiInterface
+    class EP1,EP2,EP3 endpoint
+    class AS server
+```
+
+### Data flow diagram for request & event
+
+```mermaid
+sequenceDiagram
+    %% Définition des participants
+    participant BL as Business Logic
+    participant API as API Interface
+    participant AS as API Server
+    participant EP as Endpoint
+    participant CL as Client
+  
+    %% Ingress flow (request)
+    rect rgb(255, 200, 200)
+    Note over CL,BL: Request Flow (Montant)
+    CL->>EP: Sends request
+    EP->>AS: Forward request
+    AS->>API: Routes to interface
+    API->>BL: Calls business logic methods
+    BL-->>API: Returns response
+    API-->>AS: Sends response
+    AS-->>EP: Transmits response
+    EP-->>CL: Sends response to client
+    end
+
+    %% Egress flow (event)
+    rect rgb(200, 255, 200)
+    Note over BL,CL: Event Flow (Descendant)
+    BL->>API: Notifies event
+    API->>AS: Broadcasts event
+    AS->>EP: Routes to all endpoints
+    EP->>CL: Sends to client
+    end
+```
 
 ## Implementation
 
@@ -151,7 +235,9 @@ void loop() {
 (...)
 ```
 
-> **Note:** All initialized endpoints will automatically expose all API methods and autonomously execute client requests. The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver, but this is not important if all API-related tasks are grouped into a task running on the same core as the interfaces (UART, TCP/IP...).
+> **Note:** All initialized endpoints will automatically expose all API methods and autonomously execute client requests. 
+
+> **Note:**The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver, but this might be acceptable if all API-related tasks are grouped into a task running on the same core as the interfaces (UART, TCP/IP...).
 
 ## API Method Declaration
 
@@ -290,6 +376,22 @@ The library automatically generates comprehensive API documentation in JSON form
 }
 ```
 
+## Available Implementations
+
+The following protocol implementations are available out of the box:
+
+### HTTP/WebSocket API
+A complete HTTP REST API with WebSocket support for real-time events. Based on ESPAsyncWebServer.
+[Documentation](docs/README_web.md)
+
+### MQTT API
+MQTT implementation with topic-based routing and JSON payloads. Based on PubSubClient.
+[Documentation](docs/README_mqtt.md)
+
+### Serial API
+Human-readable serial protocol with line-oriented commands. Works with any Stream object (UART, USB CDC).
+[Documentation](docs/README_serial.md)
+
 ## Creating a Custom API Server
 To create a new protocol server, inherit from the `APIEndpoint` class and implement the virtual methods.
 
@@ -390,7 +492,7 @@ No constraint on request/response format:
 ## Implementation Details
 
 ### Memory Management
-- Using `StaticJsonDocument` for JSON buffers
+- Using `StaticJsonDocument` for storing methods
 - Default size: 2048 bytes for documentation
 - Fixed stack allocation, no dynamic memory allocation during runtime
 - Vector sizes are determined at compile time
@@ -399,14 +501,6 @@ No constraint on request/response format:
 > - Be mindful of stack size when using deeply nested objects
 > - Monitor memory usage with maximum expected payload sizes
 > - Consider static allocation limits on your target platform
-
-### Thread Safety
-- Mutex can be implemented if needed
-- Limited queue size (10 messages)
-- Minimum interval between notifications (50ms)
-
-> **Implementation Note:**  
-> The current implementation prioritizes simplicity and efficiency over thread safety. If you need thread-safe operation, consider implementing appropriate synchronization mechanisms.
 
 ### Parameter Validation
 Parameter validation is intentionally simple:
@@ -417,19 +511,3 @@ Parameter validation is intentionally simple:
 
 > **Design Philosophy:**  
 > The library focuses on providing a robust foundation while allowing business logic to implement specific validation requirements. This separation of concerns ensures flexibility while maintaining code clarity.
-
-## Available Implementations
-
-The following protocol implementations are available out of the box:
-
-### HTTP/WebSocket API
-A complete HTTP REST API with WebSocket support for real-time events. Based on ESPAsyncWebServer.
-[Documentation](docs/README_web.md)
-
-### MQTT API
-MQTT implementation with topic-based routing and JSON payloads. Based on PubSubClient.
-[Documentation](docs/README_mqtt.md)
-
-### Serial API
-Human-readable serial protocol with line-oriented commands. Works with any Stream object (UART, USB CDC).
-[Documentation](docs/README_serial.md)
