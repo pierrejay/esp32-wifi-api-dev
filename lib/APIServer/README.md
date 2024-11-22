@@ -98,13 +98,12 @@ sequenceDiagram
     rect rgba(255, 200, 200, 0.1)
     Note over CL,BL: Request Flow (ingress)
     CL->>EP: Sends request
-    EP->>AS: Forward request
-    AS->>API: Routes to interface
-    API->>BL: Calls business logic methods
+    EP-->>API: Call API method through APIServer
+    API-->>BL: Calls business logic methods
     BL-->>API: Returns response
     API-->>AS: Sends response
     AS-->>EP: Transmits response
-    EP-->>CL: Sends response to client
+    EP->>CL: Sends response to client
     end
 
     rect rgba(200, 255, 200, 0.1)
