@@ -136,7 +136,7 @@ Events are pushed from server to client as JSON messages:
 - No authentication (designed for local network use)
 
 ### JSON buffers
-4 static JSON buffers are used to avoid dynamic memory allocation for request/response handling. Their size is set depending on the average size of the response:
+4 dynamic JSON buffers are used to store the JSON responses. Their size is set depending on the average size of the response:
 - API documentation: 4096 bytes (full API description)
 - GET requests: 2048 bytes (response JSON object)
 - EVT requests: 1024 bytes (event data)

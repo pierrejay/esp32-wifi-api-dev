@@ -196,6 +196,12 @@ Example timing sequence:
 
 The state machine also manages the event queue, sending events only when the system is idle and respecting the same grace periods to maintain reliable communication.
 
+### SerialFormatter
+`SerialFormatter` is an helper class used to format the JSON responses and events:
+- It allows to pretty-print the JSON data and to format error messages in a human-readable way.
+- It also parses the command line to extract the method, path and parameters.
+It is a purely static class with no member variables.
+
 ### Usage
 ```cpp
 APIServer apiServer;

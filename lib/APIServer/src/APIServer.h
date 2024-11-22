@@ -24,7 +24,7 @@ enum class APIMethodType {
  * @brief Parameters of an API method (request or response)
  */
 struct APIParam {
-    String name;
+    String name;                        // Name of the parameter
     String type;                        // "bool", "int", "float", "string", "object"...
     bool required = true;               // Default to true (can be dismissed in constructor)
     std::vector<APIParam> properties;   // Stores nested objects (recursive)
@@ -41,11 +41,11 @@ struct APIParam {
 struct APIMethod {
     using Handler = std::function<bool(const JsonObject* args, JsonObject& response)>;
     
-    APIMethodType type;
-    Handler handler;
-    String description;
-    std::vector<APIParam> requestParams;
-    std::vector<APIParam> responseParams;
+    APIMethodType type;                     // GET, SET, EVT (event) 
+    Handler handler;                        // Function to execute when the method is called
+    String description;                     // Description of the method
+    std::vector<APIParam> requestParams;    // Parameters of the request
+    std::vector<APIParam> responseParams;   // Parameters of the response
 };
 
 /**
@@ -107,8 +107,7 @@ public:
     }
 
 private:
-    // Stores the method during construction
-    APIMethod _method;
+    APIMethod _method;  // Stores the method during construction
 };
 
 /**
@@ -184,7 +183,7 @@ public:
      */
     int getAPIDoc(JsonArray& output) {
         
-        // Recursive function to add object parameters in the JSON document
+        // Recursive lambda to add object parameters in the JSON document
         std::function<void(JsonObject&, const APIParam&)> addObjectParams = 
             [&addObjectParams](JsonObject& obj, const APIParam& param) {
                 if (param.type == "object" && !param.properties.empty()) {
@@ -203,7 +202,7 @@ public:
 
         int methodCount = 0; 
         for (const auto& [path, method] : _methods) {
-            StaticJsonDocument<2048> doc;
+            StaticJsonDocument<4096> doc;
             methodCount++;
             JsonObject methodObj = doc.to<JsonObject>();
             methodObj["path"] = path;
@@ -289,8 +288,8 @@ public:
     }
 
 private:
-    std::vector<APIEndpoint*> _endpoints;
-    std::map<String, APIMethod> _methods;
+    std::vector<APIEndpoint*> _endpoints;   // Objects implementing APIEndpoint
+    std::map<String, APIMethod> _methods;   // Registered methods (name/APIMethod map)
 
     static String toString(APIMethodType type) {
         switch (type) {

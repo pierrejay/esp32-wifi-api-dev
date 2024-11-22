@@ -115,6 +115,11 @@ private:
     static constexpr size_t WS_QUEUE_SIZE = 10;
     static constexpr bool WS_API_ENABLED = false;
 
+    static constexpr size_t WS_JSON_BUF = 1024;
+    static constexpr size_t GET_JSON_BUF = 2048;
+    static constexpr size_t SET_JSON_BUF = 512;
+    static constexpr size_t DOC_JSON_BUF = 4096;
+
     // Constantes pour les routes et types MIME
     static constexpr const char* API_ROUTE = "/api";
     static constexpr const char* WS_ROUTE = "/api/events";
@@ -122,6 +127,8 @@ private:
     static constexpr const char* MIME_TEXT = "text/plain";
     static constexpr const char* ERROR_BAD_REQUEST = "{\"error\":\"Bad Request\"}";
     static constexpr const char* ERROR_NOT_FOUND = "Not Found";
+
+
 
     void setupWebSocketEvents() {
         _ws.onEvent([this](AsyncWebSocket* server, AsyncWebSocketClient* client, 
@@ -166,7 +173,7 @@ private:
             log("WEBAPI: Requête GET reçue sur /api");
             
             // Création d'une réponse JSON asynchrone avec une capacité de 4KB
-            AsyncJsonResponse* response = new AsyncJsonResponse(4096);
+            AsyncJsonResponse* response = new AsyncJsonResponse(DOC_JSON_BUF);
             JsonArray methods = response->getRoot();
             
             // Génération de la documentation API
@@ -201,7 +208,7 @@ private:
         logf("WEBAPI: handleHTTPGet - Traitement de la requête GET pour %s", path.c_str());
         
         // Création d'une réponse JSON asynchrone (2KB, mode objet)
-        AsyncJsonResponse* response = new AsyncJsonResponse(false, 2048);
+        AsyncJsonResponse* response = new AsyncJsonResponse(false, GET_JSON_BUF);
         if (!response) {
             logf("WEBAPI: handleHTTPGet - Erreur d'allocation mémoire pour %s", path.c_str());
             request->send(500, MIME_JSON, "{\"error\":\"Memory allocation failed\"}");
@@ -243,7 +250,7 @@ private:
         logf("WEBAPI: handleHTTPSet - Arguments reçus: %s", debugArgs.c_str());
         
         // Création d'une réponse JSON asynchrone (512B, mode objet)
-        AsyncJsonResponse* response = new AsyncJsonResponse(false, 512);
+        AsyncJsonResponse* response = new AsyncJsonResponse(false, SET_JSON_BUF);
         if (!response) {
             logf("WEBAPI: handleHTTPSet - Erreur d'allocation mémoire pour %s", path.c_str());
             request->send(500, MIME_JSON, "{\"error\":\"Memory allocation failed\"}");
@@ -275,7 +282,7 @@ private:
         if (info->final && info->index == 0 && info->len == len && 
             info->opcode == WS_TEXT) {
             
-            StaticJsonDocument<1024> doc;
+            StaticJsonDocument<WS_JSON_BUF> doc;
             DeserializationError error = deserializeJson(doc, (char*)data);
             
             if (!error) {
@@ -290,7 +297,7 @@ private:
     void handleAPIRequest(const JsonObject& request) {
         if (!WS_API_ENABLED) return;
         
-        StaticJsonDocument<1024> doc;
+        StaticJsonDocument<WS_JSON_BUF> doc;
         JsonObject response = doc.to<JsonObject>();
         
         String method = request["method"].as<String>();

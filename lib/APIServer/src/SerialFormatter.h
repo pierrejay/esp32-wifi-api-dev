@@ -7,7 +7,7 @@
 
 class SerialFormatter {
     public:
-        String formatResponse(const String& method, const String& path, const JsonObject& response) {
+        static String formatResponse(const String& method, const String& path, const JsonObject& response) {
             String result = method + " " + path + ":";
             bool first = true;
             
@@ -41,11 +41,11 @@ class SerialFormatter {
             return result;
         }
 
-        String formatEvent(const String& event, const JsonObject& data) {
+        static String formatEvent(const String& event, const JsonObject& data) {
             return "EVT " + event + ": " + formatResponse("EVT", event, data);
         }
 
-        void parseCommandLine(const String& line, String& method, String& path, std::map<String, String>& params) {
+        static void parseCommandLine(const String& line, String& method, String& path, std::map<String, String>& params) {
             // Validation de base
             if (line.length() < 4) return;  // Minimum ">GET"
             
@@ -111,7 +111,7 @@ class SerialFormatter {
             }
         }
 
-        String formatAPIList(const JsonArray& methods) {
+        static String formatAPIList(const JsonArray& methods) {
             String response = "\n";
             
             for (JsonVariant method : methods) {
@@ -169,7 +169,7 @@ class SerialFormatter {
             return response;
         }
 
-        String formatError(const String& method, const String& path, const String& error) {
+        static String formatError(const String& method, const String& path, const String& error) {
             return method + " " + path + ": error=" + error;
         }
-    };
+};
