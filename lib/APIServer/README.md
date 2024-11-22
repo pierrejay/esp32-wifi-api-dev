@@ -75,9 +75,9 @@ graph TB
     API2 --> |register methods| AS
 
     %% Connexions API Server vers Endpoints
-    AS --> |routes requests & events| EP1
-    AS --> |routes requests & events| EP2
-    AS --> |routes requests & events| EP3
+    AS --> |requests/events| EP1
+    AS --> |requests/events| EP2
+    AS --> |requests/events| EP3
 
     class BL1,BL2 businessLogic
     class API1,API2 apiInterface
@@ -98,7 +98,8 @@ sequenceDiagram
     rect rgba(255, 200, 200, 0.1)
     Note over CL,BL: Request Flow (ingress)
     CL->>EP: Sends request
-    EP-->>API: Call API method through APIServer
+    EP-->>AS: Validates request format
+    AS-->>API: Routes to interface
     API-->>BL: Calls business logic methods
     BL-->>API: Returns response
     API-->>AS: Sends response
