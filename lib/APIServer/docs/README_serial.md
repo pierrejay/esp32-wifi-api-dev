@@ -55,23 +55,26 @@ The `GET api` command returns a complete description of available endpoints:
 ```
 > GET api
 < GET api
-api.methods:
-  wifi/status:
-    type=GET,
-    desc=Get WiFi status,
-    protocols=http|serial,
-    response.ap.enabled=bool,
-    response.ap.connected=bool,
-    response.ap.clients=int
-    
-  wifi/sta/config:
-    type=SET,
-    desc=Configure Station mode,
-    protocols=serial,
-    params.enabled=bool,
-    params.network.ssid=string,
-    params.network.password=string,
-    response.success=bool
+
+    wifi/status
+    ├── type: GET
+    ├── desc: Get WiFi status
+    ├── protocols: http|serial
+    └── response:
+        ├── ap.enabled: bool
+        ├── ap.connected: bool
+        └── ap.clients: int
+
+    wifi/sta/config
+    ├── type: SET
+    ├── desc: Configure Station mode
+    ├── protocols: serial
+    ├── params:
+    │   ├── enabled: bool
+    │   ├── network.ssid: string
+    │   └── network.password: string
+    └── response:
+        └── success: bool
 ```
 
 ## Examples
