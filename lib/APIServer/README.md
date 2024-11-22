@@ -107,23 +107,21 @@ sequenceDiagram
     participant EP as Endpoint
     participant CL as Client
 
-    rect rgba(255, 200, 200, 0.1)
+    rect rgba(200, 200, 200, 0.1)
     Note over CL,BL: Request Flow (ingress)
     CL->>EP: Sends request
-    EP-->>AS: Validates request format
-    AS-->>API: Routes to interface
-    API-->>BL: Calls business logic methods
-    BL-->>API: Returns response
-    API-->>AS: Sends response
-    AS-->>EP: Transmits response
+    EP-->>API: Calls method through API Server
+    API->>BL: Calls business logic methods
+    BL->>API: Returns result/error
+    API-->>EP: Transmits response through API Server
     EP->>CL: Sends response to client
     end
 
-    rect rgba(200, 255, 200, 0.1)
-    Note over BL,CL: Event Flow (egress)
+    rect rgba(200, 200, 200, 0.1)
+    Note over BL,CL: Event Flow (egress)  
     BL->>API: Notifies event
     API->>AS: Broadcasts event
-    AS->>EP: Routes to all endpoints
+    AS->>EP: Routes to endpoints
     EP->>CL: Sends to client
     end
 ```
@@ -238,9 +236,10 @@ void loop() {
 (...)
 ```
 
-> **Note:** All initialized endpoints will automatically expose all API methods and autonomously execute client requests. 
-
-> **Note:**The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver, but this might be acceptable if all API-related tasks are grouped into a task running on the same core as the interfaces (UART, TCP/IP...).
+> **Notes:** 
+> - All initialized endpoints will automatically expose all API methods and autonomously execute client requests. 
+> - The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver, but this might be acceptable if all API-related tasks are grouped into a task running on the same core as the interfaces (UART, TCP/IP...).
+> - Managing requests timing is the user's responsibility: in case of very long processing times for certain methods, consider using an asynchronous approach to avoid blocking endpoints (e.g. sending an immediate response to the client to validate the request and a second response after process completion, for example through an event).
 
 ## API Method Declaration
 
