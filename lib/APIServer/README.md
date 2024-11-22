@@ -67,17 +67,17 @@ graph TB
     end
 
     %% Connexions Application 1
-    BL1 --> API1
-    API1 --> |register methods| AS
+    BL1 --> |gives access| API1
+    API1 --> |registers methods| AS
 
     %% Connexions Application 2
-    BL2 --> API2
-    API2 --> |register methods| AS
+    BL2 --> |gives access| API2
+    API2 --> |registers methods| AS
 
     %% Connexions API Server vers Endpoints
-    AS --> |requests/events| EP1
-    AS --> |requests/events| EP2
-    AS --> |requests/events| EP3
+    AS --> |sends data| EP1
+    AS --> |sends data| EP2
+    AS --> |sends data| EP3
 
     class BL1,BL2 businessLogic
     class API1,API2 apiInterface
