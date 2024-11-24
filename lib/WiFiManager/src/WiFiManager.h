@@ -11,6 +11,8 @@
 #include <functional>
 #include "WiFiManager_dfs.h"
 
+#define FORCE_WIFI_DEFAULT_CONFIG // Uncomment to force the use of the default configuration (useful if the configuration file is corrupted)
+
 class WiFiManager {
 private:
     // WiFi status and configuration
@@ -27,8 +29,25 @@ private:
     unsigned long lastSTARetry = 0;
     unsigned long lastSTAConnectionAttempt = 0;
 
+    // WiFi authentication types
+    static constexpr const char* AUTH_MODE_STRINGS[] = {
+        "OPEN",          // WIFI_AUTH_OPEN
+        "WEP",           // WIFI_AUTH_WEP
+        "WPA_PSK",       // WIFI_AUTH_WPA_PSK
+        "WPA2_PSK",      // WIFI_AUTH_WPA2_PSK
+        "WPA_WPA2_PSK",  // WIFI_AUTH_WPA_WPA2_PSK
+        "ENTERPRISE",    // WIFI_AUTH_ENTERPRISE
+        "WPA3_PSK",      // WIFI_AUTH_WPA3_PSK
+        "WPA2_WPA3_PSK", // WIFI_AUTH_WPA2_WPA3_PSK
+        "WAPI_PSK",      // WIFI_AUTH_WAPI_PSK
+        "OWE",           // WIFI_AUTH_OWE
+        "WPA3_ENT_192",  // WIFI_AUTH_WPA3_ENT_192
+        "MAX",           // WIFI_AUTH_MAX   
+        "UNKNOWN"        // WIFI_AUTH_UNKNOWN (security type not supported)
+    };
+    
     // Lifecycle methods
-    void initDefaultConfig();
+    bool initDefaultConfig();
     void handleReconnections();
 
     // Config validation and application

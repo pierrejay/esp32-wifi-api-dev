@@ -7,7 +7,7 @@
 
     /* @brief Initialize default configurations */
     /* @return void */
-    void WiFiManager::initDefaultConfig() {
+    bool WiFiManager::initDefaultConfig() {
         // Default AP configuration
         apConfig.enabled = true;
         apConfig.ssid = DEFAULT_AP_SSID;
@@ -28,10 +28,13 @@
 
         if (!applyAPConfig(apConfig)) {
             Serial.println("WIFIMANAGER: Error applying default AP configuration");
+            return false;
         }
         if (!applySTAConfig(staConfig)) {
             Serial.println("WIFIMANAGER: Error applying default STA configuration");
+            return false;
         }
+        return true;
     }
 
 
@@ -40,15 +43,17 @@
     /* @return bool */
     bool WiFiManager::begin() {
         // SPIFFS initialization already done in main.cpp
-        initDefaultConfig();
-
-        // if (!loadConfig()) {
-        //     Serial.println("WIFIMANAGER: Error loading configuration, using default values");
-        // }
+        #ifdef FORCE_WIFI_DEFAULT_CONFIG
+            initDefaultConfig();
+        #else
+            if (!loadConfig()) {
+                Serial.println("WIFIMANAGER: Error loading configuration, using default values");
+                return initDefaultConfig();
+            }
+        #endif
         
         if (!saveConfig()) {
             Serial.println("WIFIMANAGER: Error saving configuration");
-            return false;
         }
 
         return true;
@@ -107,10 +112,12 @@
         JsonDocument doc;
         JsonArray networksArray = doc["networks"].to<JsonArray>();
         for (int i = 0; i < n; ++i) {
+            uint8_t encType = static_cast<uint8_t>(WiFi.encryptionType(i));
+            encType = encType < 12 ? encType : 12;
             JsonObject networkInfo;
             networkInfo["ssid"] =       WiFi.SSID(i);
             networkInfo["rssi"] =       WiFi.RSSI(i);
-            networkInfo["encryption"] = WiFi.encryptionType(i);
+            networkInfo["encryption"] = AUTH_MODE_STRINGS[encType];
             networksArray.add(networkInfo);
         }
         obj = doc.to<JsonObject>();
