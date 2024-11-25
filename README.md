@@ -1,6 +1,9 @@
 # ESP32 WiFiManager & APIServer Libraries
 
-This project provides a comprehensive solution for managing WiFi connections and implementing extensible communication protocols on ESP32 devices. It consists of two main libraries that work together seamlessly while remaining independently usable:
+This project provides a comprehensive solution for managing WiFi connections and implementing extensible communication protocols on ESP32 devices. It consists of two main libraries that work together seamlessly while remaining independently usable.
+
+> ⚠️ **Warning**   
+> This repository is currently under development (Work in Progress). Features may be incomplete or subject to change without notice. Use with caution.
 
 ## Overview
 
