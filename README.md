@@ -14,37 +14,29 @@ A flexible WiFi connection manager designed for real-world IoT deployments. It p
 - RESTful API for remote management
 - Persistent configuration storage
 
-This makes it ideal for various IoT scenarios:
-- Initial device setup in home automation systems
-- Remote configuration for field-deployed sensors
-- Dynamic network switching for mobile devices
-- Failover connections for critical systems
-- Local access point for configuration and monitoring
-
 ### [APIServer Library](lib/APIServer/README.md)
-An advanced, protocol-agnostic API framework designed for simplicity and extensibility. Its architecture cleanly separates:
-- Core API logic (method registration, parameter handling, documentation)
-- Protocol implementations (communication handlers)
-- Business logic (actual functionality)
+A protocol-agnostic API framework built for simplicity and extensibility, separating:
+- Core API handling
+- Protocol implementations
+- Business logic
 
-Key architectural features:
-- Abstract base class (`APIEndpoint`) defining protocol interfaces
-- Method registration using builder pattern with basic type validation
-- Polymorphic endpoint handling for runtime protocol selection
-- Event-driven architecture for real-time updates
+Architecture highlights:
+- Abstract `APIEndpoint` base class
+- Builder pattern for method registration
+- Polymorphic protocol handling
+- Event-driven updates
 
 Supported protocols through endpoint implementations:
-- HTTP/REST (with ESPAsyncWebServer)
-- WebSocket (real-time bidirectional)
-- MQTT (IoT messaging)
+- HTTP REST / WebSocket (with `ESPAsyncWebServer`)
+- MQTT (with `PubSubClient`)
 - Serial (debugging and local control)
-- Custom protocols (RF, BLE, proprietary protocols) through the extensible endpoint system
+- Custom protocols (RF, BLE, ...) through the extensible endpoint system
 
 The library's abstraction layer allows new protocols to be added by simply implementing the `APIEndpoint` interface, without modifying the core API or business logic. This makes it particularly suitable for:
-- IoT systems requiring multiple communication channels
-- Products needing future protocol extensibility
-- Systems with changing communication requirements
-- Development of custom protocols
+- Multi-protocol IoT systems
+- Future-proof products
+- Evolving communication needs
+- Custom protocol development
 
 ## Architecture
 Simplified project structure:
@@ -165,8 +157,3 @@ For detailed information about each library:
   - Protocol support
   - Event system
   - Custom endpoint creation
-
-## Contributing & License
-
-Contributions are welcome !
-Project under MIT License - see the LICENSE file for details.

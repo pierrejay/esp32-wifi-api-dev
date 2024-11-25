@@ -169,22 +169,22 @@ States:
 - `EVENT`: Sending event notification
 
 Each state transition is managed with a grace period to ensure reliable communication:
-- After sending data (PROXY_SEND, API_RESPOND, EVENT): waits 50ms before accepting new input
-- During command reception (API_RECEIVE, PROXY_RECEIVE): times out after 50ms of inactivity
+- After sending data (`PROXY_SEND`, `API_RESPOND`, `EVENT`): waits 50ms before accepting new input
+- During command reception (`API_RECEIVE`, `PROXY_RECEIVE`): times out after 50ms of inactivity
 - Between proxy operations: ensures 50ms spacing
 
 To allow large messages to be processed in a non-blocking way, received serial messages are processed by chunks of 128 bytes at each step. Responses and events are sent in full by default to increase the reliability of the communication (no interruption possible).
 > **Note:**  
-> - The chunk size can be adjusted by changing the `TX_CHUNK_SIZE` & `RX_CHUNK_SIZE` constants. Be careful with these settings, too small values may degrade the performance, too high values may deplete the RX buffer quickly or overflow the TX buffer.
-> - The default API write cycle could block the main thread due to serial communication, in particular with long messages (e.g. ~500ms for a 4096 byte message @ 9600 bps). 
-> - Optionally, you could set the maximal number of chunks to process at each write cycle by setting the "MAX_TX_CHUNKS" variable. Default value 0 means all chunks will be sent (blocking).
+> - Adjust `TX_CHUNK_SIZE` & `RX_CHUNK_SIZE` with care - balance between buffer usage and performance
+> - Long messages can block the main thread (e.g. 500ms for 4KB @ 9600 bps)
+> - Optional `MAX_TX_CHUNKS` limits chunks per write cycle (default 0: send all)
 
-This approach:
-- Avoids blocking the thread by returning to the parent loop or task regularly
+This design:
+- Maintains thread responsiveness
 - Prevents message collisions
-- Ensures complete transmission of responses
-- Maintains clean separation between API and proxy traffic
-- Handles timeouts gracefully with appropriate error messages
+- Ensures complete transmission
+- Separates API/proxy traffic
+- Handles timeouts gracefully
 
 Example timing sequence:
 ```

@@ -14,49 +14,44 @@ The WiFiManager library provides a comprehensive solution for managing WiFi conn
 
 ### Key Features
 - Dual mode operation (AP + STA)
-- JSON-based configuration interface
-- Automatic reconnection handling
-- Fully asynchronous and non-blocking operation
-- mDNS support for local network discovery
-- RESTful API integration
-- Real-time status monitoring
-- Event-driven architecture
-- Configuration persistence in SPIFFS
+- JSON configuration interface
+- Automatic reconnection
+- Asynchronous operation
+- mDNS support
+- RESTful API
+- Real-time monitoring
+- SPIFFS configuration storage
 
 ## Architecture
 
 ### Core Components
 
-#### WiFiManager (Master Class)
-- Central manager for all WiFi functionality
-- Handles both AP and STA modes
-- Manages configurations and states
-- Provides JSON interface for operations
-- Coordinates event notifications
+#### WiFiManager
+- Manages WiFi functionality (AP/STA modes)
+- Handles configurations and states
+- Provides JSON interface
+- Manages event notifications
 
-#### ConnectionConfig (Structure)
-- Configuration container for WiFi modes
-- Handles serialization/deserialization
-- Validates configuration parameters
-- Supports both AP and STA specific settings
+#### ConnectionConfig
+- Stores WiFi configuration
+- Handles JSON serialization
+- Validates parameters
 
-#### ConnectionStatus (Structure)
-- Real-time status information
-- Contains connection state details
-- Tracks clients, IP, and signal strength
-- Provides JSON serialization
+#### ConnectionStatus
+- Tracks real-time status
+- Monitors connections
+- Provides JSON output
 
-#### WiFiManagerAPI (Interface Class)
-- Bridges WiFiManager with APIServer library
-- Registers WiFi management API methods
-- Handles incoming API requests to WiFiManager
-- Broadcasts events to the API Server
-- Serves static HTTP/JS backend to manage WiFi settings
+#### WiFiManagerAPI
+- Integrates with APIServer
+- Handles API requests
+- Manages WebSocket events
+- Serves web interface
 
 ## Quick Start
 
 The setup is pretty straightforward, just include the WiFiManager header and create an instance of the WiFiManager class.
-You must call `begin()` to initialize the WiFiManager, and then call `poll()` in your main loop or in a task to maintain the WiFi connection (update status, handle reconnections, etc.).
+You must call `begin()` to initialize the WiFiManager, and then call `poll()` in your main loop or in a task to maintain the WiFi connection.
 
 ```cpp
 #include "WiFiManager.h"
@@ -79,15 +74,14 @@ void loop() {
 
 ### Configuration
 
-Configuration can be done either by using the provided methods with ConnectionConfig structures, or by using the JSON interface.
+Configuration can be done either using ConnectionConfig structures or the JSON interface. The JSON interface provides a more flexible and dynamic way to configure the WiFiManager, as it allows for partial updates and follows the "robustness principle": it automatically fills missing parameters with relevant values and cleans up inapplicable ones.
 
-The JSON interface provides a more flexible and dynamic way to configure the WiFiManager, as it allows for a more complex configuration to be loaded from a file or a web server. The configuration API has been designed with the "robustness principle" in mind: it will automatically fill in missing parameters with relevant values, and clean up parameters that are not applicable. 
-
-The simplicity of this interface lies in the fact that **you only need to specify the parameters you want to change**. For example, connecting and disconnecting a WiFi access doesn't require special "connect/disconnect" methods, it can just be done by sending a JSON with a single "enabled" key value.
+The simplicity lies in that **you only need to specify the parameters you want to change**. For example, connecting or disconnecting from a WiFi network only requires sending a JSON with an "enabled" key.
 
 > **Note:**  
-> - Configuration is saved to SPIFFS upon changes, so it will persist across reboots.
-> - The setAPConfig and setSTAConfig methods provide both type- and value-checking of the configuration parameters. Invalid configurations are rejected and return false.
+> - Configuration is saved to SPIFFS upon changes
+> - The configuration methods provide both type- and value-checking
+> - Invalid configurations are rejected and return false
 
 #### Access Point (AP) Configuration
 
@@ -113,7 +107,7 @@ wifiManager.setAPConfigFromJson(apConfig.as<JsonObject>());
 - `ip (string)`: AP IP address
 - `gateway (string, optional)`: Gateway IP
 
-In Access Point mode, the subnet is always set to 255.255.255.0. IP is mandatory, but gateway will be set to IP if not specified. 
+In AP mode, subnet is always 255.255.255.0. Gateway will default to IP if not specified.
 
 #### Station (STA) Configuration
 
@@ -140,11 +134,10 @@ wifiManager.setSTAConfigFromJson(staConfig.as<JsonObject>());
 - `gateway (string, optional)`: Gateway IP
 - `subnet (string, optional)`: Subnet mask
 
-In Station mode, `dhcp` decides if IP, gateway and subnet are used: 
-- If DHCP is enabled, IP, gateway and subnet are ignored. 
-- If DHCP is disabled, IP, gateway and subnet are used.
-  - IP is mandatory, but gateway and subnet are optional.
-  - If gateway is specified, then subnet is mandatory, and vice versa.
+In Station mode, if DHCP is disabled:
+- IP is mandatory
+- Gateway and subnet must be specified together
+- All parameters are validated for format and consistency
 
 ### Network Scanning
 
@@ -335,40 +328,33 @@ void onStateChange() {
 ## Web UI
 
 ### Overview
-The library includes a built-in web interface for easy WiFi configuration. This interface is served via the HTTP endpoint and provides a user-friendly way to:
-- Configure Access Point settings
-- Manage Station mode connections
-- Scan available networks
-- Set static IP configurations
-- Monitor connection status in real-time
-- Configure device hostname
+The library includes a web interface for WiFi configuration, providing:
+- AP/STA configuration
+- Network scanning
+- IP settings
+- Real-time monitoring
+- Hostname configuration
 
 ### Accessing the Interface
-The web interface is available at `http://<device-ip>/` or through mDNS at `http://<hostname>.local/` if supported. The default hostname is "esp32".
+Available at `http://<device-ip>/` or `http://<hostname>.local/`
 
-> **Important Note:**  
-> Be cautious when disabling both AP and STA connections, as this will make the web interface inaccessible. Always ensure at least one connection method remains active to maintain access to the device.
+> **Important:**  
+> Keep at least one connection method active to maintain access.
 
 ### Features
-- Real-time status updates via WebSocket
-- Network scanning capabilities
-- Password-protected configurations
-- DHCP/Static IP configuration
-- Signal strength indication for STA mode
-- Connected clients count for AP mode
+- Real-time WebSocket updates
+- Network scanning
+- Protected configuration
+- IP configuration
+- Signal monitoring
+- Client tracking
 
 ### Installation
 The web interface files must be uploaded to the device's SPIFFS file system. Using PlatformIO:
 
-1. Place the interface files in the `data/` directory of your project
-2. Build the file system image:
-```bash
-pio run --target buildfs
-```
-3. Upload the file system:
-```bash
-pio run --target uploadfs
-```
+1. Place files in `data/` directory
+2. Build filesystem: `pio run --target buildfs`
+3. Upload: `pio run --target uploadfs`
 
 > **Note:**  
 > The web interface is automatically enabled when using the WebAPIEndpoint class. No additional configuration is required beyond uploading the file system.
@@ -377,25 +363,22 @@ pio run --target uploadfs
 
 ### Memory Management
 - Static allocation for JSON documents
-- Default buffer sizes:
+- Optimized buffer sizes:
   - Configuration: 1024 bytes
   - Status updates: 1024 bytes
-  - Network scan: 1024 bytes for all networks (10 networks max)
+  - Network scan: 1024 bytes (10 networks max)
 
 ### Connection Management
-- Automatic reconnection handling
-- Configurable poll & retry interval, timeouts
+- Automatic reconnection with exponential backoff
+- Configurable poll intervals and timeouts
+- Robust state machine handling
+- Connection attempt monitoring
 
-### Configuration Persistence
-- Configurations stored in SPIFFS
+### Configuration
+- SPIFFS-based persistent storage
 - Automatic loading on startup
-- Default configurations if no stored data
-
-### Validation
-- IP address & subnet mask format validation
-- SSID and password length checks
-- Channel number validation (1-13)
-- Configuration completeness checks
+- Fallback to safe defaults
+- Full parameter validation
 
 ### Error Handling
 - Configuration validation
@@ -403,3 +386,14 @@ pio run --target uploadfs
 - Timeout handling
 - State consistency checks
 - JSON parsing error detection
+
+## Requirements
+
+> **Important:**  
+> This library requires C++17 or higher. Add to `platformio.ini`:
+> ```ini
+> build_flags = 
+>     -Wno-deprecated-declarations
+>     -std=gnu++17
+> build_unflags = -std=gnu++11
+> ```

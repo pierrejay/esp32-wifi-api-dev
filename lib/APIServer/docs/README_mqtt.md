@@ -152,14 +152,6 @@ void loop() {
 }
 ```
 
-## Best Practices
-1. Use empty payload for simple GET requests
-2. Include explicit method for SET requests
-3. Use JSON parameters for complex requests
-4. Keep payloads small and focused
-5. Handle reconnection gracefully
-6. Consider implementing QoS and security based on your needs
-
 ## Advanced Topics
 
 ### Connection Management

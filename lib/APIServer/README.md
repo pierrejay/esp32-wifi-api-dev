@@ -12,35 +12,31 @@
 ## Architecture
 
 ### Overview
-The APIServer library addresses a common challenge in embedded systems development: creating maintainable and extensible APIs for IoT devices. Traditional approaches often lead to tightly coupled code where business logic, API endpoints, and communication protocols are intertwined, making it difficult to modify or extend functionality.
-
-### Key Challenges & Features
-- Separation of concerns between business logic and API implementation
-- Intuitive route/method declaration
-- Fully autonomous, asynchronous, non-blocking operations to serve requests
-- Automatic API documentation generation
-- Real-time event notifications support
-- Seamless integration with various protocols (HTTP, WebSocket, MQTT, Serial, etc.)
-- Support for nested objects in parameters and responses
-- Facilitating the addition of new protocols with minimal changes
+The APIServer library provides a flexible framework for implementing APIs on embedded systems, with:
+- Separation of business logic and API implementation
+- Protocol-agnostic method declaration
+- Automatic documentation generation
+- Real-time event system
+- Multi-protocol support (HTTP, WebSocket, MQTT, Serial)
 
 ### Core Components
-- **APIServer (Master Object)**
-  - Central manager of API methods
-  - Registers methods and their handlers
-  - Manages automatic documentation
-  - Coordinates different protocol endpoints
-  - Broadcasts events
 
-- **APIEndpoint (Class)**
-  - Abstract base class for protocol servers
-  - Wrapper for HTTP, WebSocket, Serial, MQTT...
-  - Declares supported capabilities (getter, setter, event)
+#### APIServer
+- Manages API methods and endpoints
+- Routes requests to handlers
+- Broadcasts events
+- Generates documentation
 
-- **APIMethod (Structure)**
-  - Type (GET/SET/EVT)
-  - Stores parameters, response & callback
-  - Builder pattern for declaration & auto-documentation
+#### APIEndpoint
+- Abstract base class for protocol implementations
+- Declares protocol capabilities (GET/SET/EVT)
+- Handles request parsing and response formatting
+
+#### APIMethod
+- Type (GET/SET/EVT)
+- Parameters and response structure
+- Handler function
+- Protocol exclusions
 
 ### Architecture diagram
 ```mermaid
@@ -236,18 +232,11 @@ void loop() {
 (...)
 ```
 
-> **General notes:** 
-> - All initialized endpoints will automatically expose all API methods and autonomously execute client requests. 
-> - Managing requests timing is the user's responsibility: in case of very long processing times for certain methods, consider using an asynchronous approach to avoid blocking endpoints (e.g. sending an immediate response to the client to validate the request and a second response after process completion, for example through an event).
+#### General notes
+All endpoints automatically expose the full API and handle client requests autonomously. For methods with long processing times, consider an asynchronous approach: send an immediate validation response followed by an event notification upon completion.
 
 > **Notes on thread-safety:**  
-> The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver. However, in single-thread operation the behavior is deterministic and safe and can be quite reactive with proper endpoint implementation (e.g. splitting Serial messages in chunks to avoid blocking the main task with I/O operations). This will be a major focus for the next releases which will fully use FreeRTOS features. It will include:
-> - Mutex protection for APIServer methods
-> - Event queue system for broadcasts
-> - Dedicated tasks for request handling
-> - Proper timeout management, etc.
->
-> The idea is to isolate the API Server in a dedicated task to handle requests and events, while allowing the business logic to run in the main thread. This will allow to fully & safely benefit from the performance of dual core MCUs like ESP32-S3: one core can be dedicated to networking & API tasks (this is already the case for WiFi and TCP/IP stack), while the other one runs the business logic.
+> While deterministic and safe in single-thread operation, the current design is not thread-safe, particularly with asynchronous libraries like ESPAsyncWebserver. Smart endpoint implementation (like chunking Serial messages) helps maintain reactivity without blocking the main task. Future releases will leverage FreeRTOS features for true thread safety, including mutex protection, event queues, and dedicated task handling. The API Server will run in its own task, enabling dual-core MCUs like ESP32-S3 to efficiently split networking operations and business logic across cores - similar to how WiFi and TCP/IP stacks already operate.
 
 
 ## API Method Declaration
@@ -360,20 +349,20 @@ public:
 };
 ```
 
-The Observer pattern (via callback) offers several advantages:
-- No polling needed (better performance), just call the `notifyStateChange()` method when you need to broadcast a state change
-- State changes are captured immediately
-- Separation of concerns conserved, at the expense of a single callback registration:
-  - Business logic (WiFiManager) notifies state changes
-  - API layer (WiFiManagerAPI) handles the event broadcasting
-- Easy to add multiple callbacks if needed
+The Observer pattern via callbacks provides an efficient way to handle state changes:
+
+- Eliminates polling overhead
+- Captures changes instantly with `notifyStateChange()`
+- Maintains separation of concerns with a single callback registration
+- Easy to expand if needed
 
 > **Implementation Note:**  
-> The callback approach presented here is simpler than a full Observer pattern implementation while providing the same benefits. It's particularly useful when:
-> - State changes are infrequent or unpredictable
-> - Real-time updates are important
-> - You want to avoid polling overhead
-> If you need more flexibility, consider implementing a full Observer pattern.
+> While simpler than a full Observer pattern, the callback approach delivers similar benefits with minimal overhead. It's ideal for:
+> - Infrequent/unpredictable state changes
+> - Real-time update requirements
+> - Performance-critical scenarios
+>
+> Consider a full Observer pattern only if you need additional flexibility.
 
 ### Nested Objects
 The library supports nested objects at any depth level through recursive implementation.
@@ -588,11 +577,12 @@ No constraint on request/response format:
 - Only requirement is to convert to/from JsonObject for API method execution
 
 > **Best Practices**
-> - Keep parsing logic separate from request handling
-> - Use a queue for event notifications to avoid blocking
-> - Implement error handling appropriate for your protocol
-> - Consider implementing a debug mode for logging
-> For more details on server implementation, see existing implementations (ESPAsyncWebserial, MQTT, Serial...).
+> - Separate parsing logic from request handling
+> - Queue event notifications to prevent blocking
+> - Implement protocol-specific error handling
+> - Add debug logging capabilities
+>
+> For implementation examples, see the provided HTTP, MQTT and Serial endpoints.
 
 ## Implementation Details
 
@@ -620,17 +610,17 @@ No constraint on request/response format:
   ```
 
 > **Memory Considerations:**  
-> - Monitor stack usage when implementing deep method chains or complex parameter structures
-> - Consider platform limitations when defining fixed container sizes
-> - Choose appropriate document sizes in endpoint implementations based on your API's needs
-> - For endpoints handling multiple simultaneous requests, consider using a pool of pre-allocated documents
+> - Watch stack usage with deep method chains and complex parameters
+> - Size fixed containers according to platform limits
+> - Right-size JSON documents for your API needs
+> - Consider document pools for concurrent requests
 
 ### Parameter Validation
-Parameter validation is intentionally simple:
-- Verification of required parameters presence
-- No type validation (handled by business logic)
-- No recursive validation of nested objects (level 1 verification: object)
-- Invalid configurations cause compilation errors
+Basic validation is intentionally lightweight:
+- Checks presence of required parameters
+- Delegates type checking to business logic
+- Only validates top-level objects
+- Catches invalid configs at compile-time
 
 > **Design Philosophy:**  
-> The library focuses on providing a robust foundation while allowing business logic to implement specific validation requirements. This separation of concerns ensures flexibility while maintaining code clarity.
+> The library provides core validation while letting business logic handle specific requirements - maximizing flexibility without compromising code clarity.
