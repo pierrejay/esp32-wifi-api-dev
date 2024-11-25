@@ -80,8 +80,9 @@ void loop() {
 ### Configuration
 
 Configuration can be done either by using the provided methods with ConnectionConfig structures, or by using the JSON interface.
-The JSON interface provides a more flexible and dynamic way to configure the WiFiManager, as it allows for a more complex configuration to be loaded from a file or a web server.
-The configuration API has been designed with the "robustness principle" in mind: it will automatically fill in missing parameters with relevant values, and clean up parameters that are not applicable. 
+
+The JSON interface provides a more flexible and dynamic way to configure the WiFiManager, as it allows for a more complex configuration to be loaded from a file or a web server. The configuration API has been designed with the "robustness principle" in mind: it will automatically fill in missing parameters with relevant values, and clean up parameters that are not applicable. 
+
 The simplicity of this interface lies in the fact that **you only need to specify the parameters you want to change**. For example, connecting and disconnecting a WiFi access doesn't require special "connect/disconnect" methods, it can just be done by sending a JSON with a single "enabled" key value.
 
 > **Note:**  
