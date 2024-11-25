@@ -87,7 +87,7 @@ private:
     };
 
 
-    inline SerialCommand parseCommand(const String& line) {
+    inline SerialCommand parseCommand(const String& line) const {
         SerialCommand cmd;
         SerialFormatter::parseCommandLine(line, cmd.method, cmd.path, cmd.params);
         
@@ -252,7 +252,7 @@ private:
         }
     }
 
-    String formatError(const String& method, const String& path, const String& error) {
+    String formatError(const String& method, const String& path, const String& error) const {
         return SerialFormatter::formatError(method, path, error);
     }
 

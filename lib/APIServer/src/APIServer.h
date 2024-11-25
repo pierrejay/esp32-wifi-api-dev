@@ -278,7 +278,7 @@ public:
      * @param protocol The protocol to filter by (optional : empty to get all methods)
      * @return The methods (filtered by protocol if specified)
      */
-    const std::map<String, APIMethod> getMethods(const String& protocol = "") const {
+    const std::map<String, APIMethod>& getMethods(const String& protocol = "") const {
         if (protocol.isEmpty()) {
             return _methods;  // Retourne toutes les méthodes si aucun protocole n'est spécifié
         }
@@ -307,7 +307,7 @@ public:
      * @param args The arguments of incoming request
      * @return True if the required parameters are present, false otherwise
      */
-    bool validateParams(const APIMethod& method, const JsonObject* args) {
+    bool validateParams(const APIMethod& method, const JsonObject* args) const {
         if (!args && !method.requestParams.empty()) {
             return false;  // No arguments while expected
         }

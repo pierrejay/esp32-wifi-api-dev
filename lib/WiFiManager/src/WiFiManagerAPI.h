@@ -47,7 +47,7 @@ private:
     /**
      * @brief Register the methods to the API server
      */
-    void registerMethods() {
+    void registerMethods() const {
         // GET wifi/status
         _apiServer.registerMethod("wifi/status", 
             APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
