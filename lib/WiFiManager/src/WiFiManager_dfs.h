@@ -119,6 +119,9 @@ struct ConnectionConfig {
     IPAddress gateway = IPAddress(0, 0, 0, 0);      // Gateway
     IPAddress subnet = IPAddress(0, 0, 0, 0);       // Subnet mask
 
+    // Variable to make the "enabled" field optional in JSON (unchanged if absent)
+    bool enabledVoid = false;
+
     // Method to serialize config to JSON
     void toJson(JsonObject& obj) const {
         obj["enabled"] = enabled;
@@ -156,6 +159,9 @@ struct ConnectionConfig {
         if (config["dhcp"].is<bool>())       temp.dhcp = config["dhcp"];
         if (config["enabled"].is<bool>())    temp.enabled = config["enabled"];
         if (config["hideSSID"].is<bool>())   temp.hideSSID = config["hideSSID"];
+
+        // If enabled is missing, define enabledVoid to true
+        if (!config["enabled"].isNull())     temp.enabledVoid = true;
 
         // Validation IP & subnet (must be valid if present)
         if (config["ip"].is<String>()) {

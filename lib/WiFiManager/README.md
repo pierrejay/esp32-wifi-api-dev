@@ -79,10 +79,14 @@ void loop() {
 
 ### Configuration
 
-Configuration can be done either by using the provided methods with ConnectionConfig structures, or by using the JSON interface. 
+Configuration can be done either by using the provided methods with ConnectionConfig structures, or by using the JSON interface.
 The JSON interface provides a more flexible and dynamic way to configure the WiFiManager, as it allows for a more complex configuration to be loaded from a file or a web server.
-Configuration is saved to SPIFFS upon changes, so it will persist across reboots.
-The setAPConfig and setSTAConfig methods all provide type- and value-checking of the configuration parameters. Invalid configurations are rejected and return false. It will also clean up configuration items that are not applicable (like channel for AP) by removing them from the configuration before saving.
+The configuration API has been designed with the "robustness principle" in mind: it will automatically fill in missing parameters with relevant values, and clean up parameters that are not applicable. 
+The simplicity of this interface lies in the fact that **you only need to specify the parameters you want to change**. For example, connecting and disconnecting a WiFi access doesn't require special "connect/disconnect" methods, it can just be done by sending a JSON with a single "enabled" key value.
+
+> **Note:**  
+> - Configuration is saved to SPIFFS upon changes, so it will persist across reboots.
+> - The setAPConfig and setSTAConfig methods provide both type- and value-checking of the configuration parameters. Invalid configurations are rejected and return false.
 
 #### Access Point (AP) Configuration
 

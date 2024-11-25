@@ -190,15 +190,26 @@
     /* @return bool */
     bool WiFiManager::validateAPConfig(ConnectionConfig& config) {
         // Validation of channel, SSID and password
-        if (config.channel < 1 || config.channel > 13) return false;
-        if (config.ssid.isEmpty()) return false;
-        if (config.password.isEmpty()) return false;
+        if (config.channel > 13) return false;
 
         // Validation length of SSID & password
         if (config.ssid.length() > 32) return false;
-        if (config.password.length() < 8 || config.password.length() > 64) return false;
+        if ((!config.password.isEmpty() && config.password.length() < 8) || config.password.length() > 64) return false;
 
-        // Clean up config items not applicable
+        // Return false if both current & submitted SSIDs, passwords and channels are empty
+        if (config.ssid.isEmpty() && apConfig.ssid.isEmpty()) return false;         
+        if (config.password.isEmpty() && apConfig.password.isEmpty()) return false; 
+        if (config.channel == 0 && apConfig.channel == 0) return false;    
+
+        // Add previous enabled if absent (enabledVoid true)
+        if (config.enabledVoid) config.enabled = apConfig.enabled;
+
+        // Add ssid, password & channel if absent
+        if (config.ssid.isEmpty()) config.ssid = apConfig.ssid;
+        if (config.password.isEmpty()) config.password = apConfig.password;
+        if (config.channel == 0) config.channel = apConfig.channel;
+              
+        // Clean up unapplicable config items
         config.dhcp = true;
         if (config.gateway == IPAddress(0, 0, 0, 0)) config.gateway = config.ip;
         config.subnet = IPAddress(255, 255, 255, 0);
@@ -210,12 +221,13 @@
     /* @param ConnectionConfig& config : Configuration to validate */
     /* @return bool */
     bool WiFiManager::validateSTAConfig(ConnectionConfig& config) {
-        // Validation of SSID
-        if (config.ssid.isEmpty()) return false;
 
         // Validation length of SSID & password
         if (config.ssid.length() > 32) return false;
-        if (config.password.length() < 8 || config.password.length() > 64) return false;
+        if ((!config.password.isEmpty() &&config.password.length() < 8) || config.password.length() > 64) return false;
+
+        // Add previous enabled if absent (enabledVoid true)
+        if (config.enabledVoid) config.enabled = staConfig.enabled;
 
         // Manage DHCP and IP settings for STA
         if (config.dhcp) {
@@ -224,8 +236,23 @@
             config.gateway = IPAddress(0, 0, 0, 0);
             config.subnet = IPAddress(0, 0, 0, 0);
         } 
-        else {
-            // DHCP disabled, check IP configurations
+        else { // DHCP disabled, check IP configurations
+
+            // Special cases for robustness :
+            // - Current IP, gateway & subnet are >0 : we assume the user wants to change all IP settings
+            // - Current IP is >0, gateway & subnet are BOTH 0 : we assume the user wants to change the fixed IP only
+            // - Current IP is 0, gateway & subnet are BOTH >0 : we assume the user wants to change gateway & subnet
+            // - Current IP, gateway & subnet are 0 : we assume the user wants to use the previous values
+            // - Corner case: if the user has set gateway & subnet and wants to set them to default, they will have to toggle DHCP
+
+            // Recover current IP, gateway & subnet if absent
+            if (config.ip == IPAddress(0, 0, 0, 0)) config.ip = staConfig.ip;
+            if (config.gateway == IPAddress(0, 0, 0, 0) && config.subnet == IPAddress(0, 0, 0, 0)) {
+                config.gateway = staConfig.gateway;
+                config.subnet = staConfig.subnet;
+            }
+            
+            // Check if IP, gateway & subnet are not null
             bool hasIP = config.ip != IPAddress(0, 0, 0, 0);
             bool hasGateway = config.gateway != IPAddress(0, 0, 0, 0);
             bool hasSubnet = config.subnet != IPAddress(0, 0, 0, 0);
@@ -244,7 +271,22 @@
                 config.subnet = IPAddress(0, 0, 0, 0);
             }
         }
-        // Clean up config items not applicable
+
+        // Add previous ssid and password if both are empty
+        // If only SSID is filled, keep password blank (possibly a new unencrypted network)
+        // If only password is filled, add current SSID (possibly trying a new password)
+        if (config.ssid.isEmpty() && config.password.isEmpty()) {   
+            config.ssid = staConfig.ssid;
+            config.password = staConfig.password;
+        }
+        else if (config.ssid.isEmpty()) {
+            config.ssid = staConfig.ssid;
+        }
+        else if (config.password.isEmpty()) {
+            config.password = staConfig.password;
+        }
+
+        // Clean up unapplicable config items
         config.channel = 0;
         config.hideSSID = false;
         return true;
@@ -254,6 +296,9 @@
     /* @param const ConnectionConfig& config : Configuration to apply */
     /* @return bool */
     bool WiFiManager::applyAPConfig(const ConnectionConfig& config) {
+        // If it's a configuration change, disconnect the AP first
+        if (config.enabled && apConfig.enabled) WiFi.softAPdisconnect(true);
+
         if (config.enabled) {
             Serial.println("wifi_ap: Applying AP configuration:");
             Serial.printf("- SSID: %s\n", config.ssid.c_str());
@@ -269,22 +314,29 @@
             );
             
             if (!success) {
-                Serial.println("wifi_ap: Failed to configure access point");
+                Serial.println("wifi_ap: Failed to configure access point, aborting...");
+                WiFi.softAPdisconnect(true);
+                apStatus.enabled = false;
+                notifyStateChange();
                 return false;
-            }
-
-            bool result = WiFi.softAPConfig(config.ip, config.gateway, config.subnet);
-            if (!result) {
-                Serial.println("wifi_ap: Failed to configure AP IP");
             } else {
-                Serial.printf("wifi_ap: Access point configured successfully (IP: %s)\n", WiFi.softAPIP().toString().c_str());
+                bool result = WiFi.softAPConfig(config.ip, config.gateway, config.subnet);
+                if (!result) {
+                    Serial.println("wifi_ap: Failed to configure AP IP, aborting...");
+                    WiFi.softAPdisconnect(true);
+                    apStatus.enabled = false;
+                    notifyStateChange();
+                    return false;
+                } else {
+                    Serial.printf("wifi_ap: Access point configured successfully (IP: %s)\n", WiFi.softAPIP().toString().c_str());
+                    apStatus.enabled = true;
+                    notifyStateChange();
+                    return true;
+                }
             }
-            
-            apStatus.enabled = true;
-            notifyStateChange();
-            return result;
         }
         
+        // Normal case : disable the AP (always successful)
         Serial.println("wifi_ap: Disabling the access point");
         WiFi.softAPdisconnect(true);
         apStatus.enabled = false;
