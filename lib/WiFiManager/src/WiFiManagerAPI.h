@@ -40,7 +40,7 @@ private:
     APIServer& _apiServer;
     unsigned long _lastNotification;
     unsigned long _lastHeartbeat;
-    StaticJsonDocument<2048> _previousState;
+    StaticJsonDocument<1024> _previousState;
     static constexpr unsigned long NOTIFICATION_INTERVAL = 500;
     static constexpr unsigned long HEARTBEAT_INTERVAL = 5000;
 
@@ -236,7 +236,7 @@ private:
      */
     bool sendNotification(bool force = false) {
         unsigned long now = millis();
-        StaticJsonDocument<2048> newState;
+        StaticJsonDocument<1024> newState;
         JsonObject newStatus = newState["status"].to<JsonObject>();
         JsonObject newConfig = newState["config"].to<JsonObject>();
         _wifiManager.getStatusToJson(newStatus);

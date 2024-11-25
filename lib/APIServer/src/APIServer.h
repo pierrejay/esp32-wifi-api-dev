@@ -217,9 +217,8 @@ public:
 
         int methodCount = 0; 
         for (const auto& [path, method] : _methods) {
-            StaticJsonDocument<4096> doc;
             methodCount++;
-            JsonObject methodObj = doc.to<JsonObject>();
+            JsonObject methodObj;
             methodObj["path"] = path;
             methodObj["type"] = toString(method.type);
             methodObj["desc"] = method.description;

@@ -109,7 +109,7 @@
         if (n > 10) {  // Arbitrary limit for safety
             n = 10;
         }
-        JsonDocument doc;
+        StaticJsonDocument<1024> doc;
         JsonArray networksArray = doc["networks"].to<JsonArray>();
         for (int i = 0; i < n; ++i) {
             uint8_t encType = static_cast<uint8_t>(WiFi.encryptionType(i));

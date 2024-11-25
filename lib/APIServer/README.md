@@ -2,7 +2,7 @@
 
 ## Table of Contents
 - [Architecture](#architecture)
-- [Implementation](#implementation)
+- [Integration](#integration)
 - [API Method Declaration](#api-method-declaration)
 - [Documentation](#documentation)
 - [Available Implementations](#available-implementations)
@@ -127,7 +127,7 @@ sequenceDiagram
     end
 ```
 
-## Implementation
+## Integration
 
 ### Process
 1. Create dedicated application API interface class for each component (e.g. `WiFiManagerAPI.h`)
@@ -135,11 +135,11 @@ sequenceDiagram
 3. Declare & initialize API & endpoints instances in main
 4. Poll APIServer regularly, or run within a task to let client requests be handled automatically in background
 
-> **Error handling note:**  
+> **Note on error handling:**  
 > Parameter type/value checking & error handling is responsibility of business logic.
 > API Server only checks for presence of required parameters.
 
-### Basic Implementation Example
+### Basic Integration Example
 Example of implementing an HTTP APIServer for a WiFi Manager:
 
 ```
@@ -152,14 +152,13 @@ wifimanager_app/
   │   └── APIServer/     
   │       ├── APIServer.h        // Core functionality
   │       ├── APIEndpoint.h      // Abstract endpoint implementation
-  │       ├── WebAPIEndpoint.h   // HTTP/WS server implementation
+  │       ���── WebAPIEndpoint.h   // HTTP/WS server implementation
   │       └── (...)              // Custom endpoints implementation
   └── src/
       └── main.cpp               // Main app file
 ```
 
-> **Implementation Note:**  
-> Initialization consists of creating stack objects (globals), passing the server to the application API and endpoint, and declaring the methods to use.
+Initialization consists of creating stack objects (globals), passing the server to the application API and endpoint, and declaring the methods to use.
 
 #### Main Application Setup: main.cpp
 ```cpp
@@ -237,10 +236,19 @@ void loop() {
 (...)
 ```
 
-> **Notes:** 
+> **General notes:** 
 > - All initialized endpoints will automatically expose all API methods and autonomously execute client requests. 
-> - The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver, but this might be acceptable if all API-related tasks are grouped into a task running on the same core as the interfaces (UART, TCP/IP...).
 > - Managing requests timing is the user's responsibility: in case of very long processing times for certain methods, consider using an asynchronous approach to avoid blocking endpoints (e.g. sending an immediate response to the client to validate the request and a second response after process completion, for example through an event).
+
+> **Notes on thread-safety:**  
+> The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver. This will be a major focus for the next releases which will fully use FreeRTOS features. It will include:
+> - Mutex protection for APIServer methods
+> - Event queue system for broadcasts
+> - Dedicated tasks for request handling
+> - Resource sharing protection mechanisms
+> - Proper timeout management
+> The idea is to isolate the API Server in a dedicated task to handle requests and events, while allowing the business logic to run in the main thread. This will allow to fully & safely benefit from the performance of dual core MCUs like ESP32-S3: one core can be dedicated to networking & API tasks (this is already the case for WiFi and TCP/IP stack), while the other one can run the business logic.
+
 
 ## API Method Declaration
 
@@ -293,16 +301,79 @@ apiServer.registerMethod("wifi/events",
 ##### Broadcasting Events
 Unlike other methods, events are not handled automatically upon client request, they must be called by the application API (for example to signal a status change to all connected clients).
 
+There are several approaches to handle state changes:
+
+1. **Polling Approach** (simplest but dumbest)
 ```cpp
 // Inside application API
-StaticJsonDocument<1024> newState;           // Create new JsonDocument
-JsonObject status = newState["status"].to<JsonObject>();
-_wifiManager.getStatusToJson(status);        // Fetch wifi status
-_apiServer.broadcast("wifi/events", status); // Push event
+void WiFiManagerAPI::poll() {
+    if (millis() - _lastCheck > CHECK_INTERVAL) {
+        StaticJsonDocument<1024> newState;
+        JsonObject status = newState.to<JsonObject>();
+        _wifiManager.getStatusToJson(status);
+        
+        if (newState != _previousState) {
+            _apiServer.broadcast("wifi/events", status);
+            _previousState = newState;
+        }
+    }
+}
 ```
-To avoid managing event notifications inside business logic, it is possible to setup a periodic check for changes in application data within the application API. 
-A better solution (but introducing a small degree of coupling) is to use the Observer pattern to inform the application API that a change happened for example. With this solution, formatting and sending the event to the APIServer is automatically handled by the application API when the application data notifies a change or action.
-> **Note:** Events are automatically transmitted to all endpoints that implement protocols handling events (Websocket, MQTT for example, defined in classes derived from APIEndpoint).
+
+2. **Observer Pattern** (recommended approach)
+```cpp
+// Inside business logic class
+class WiFiManager {
+private:
+    std::function<void()> _onStateChange;
+
+public:
+    void onStateChange(std::function<void()> callback) {
+        _onStateChange = callback;
+    }
+    
+protected:
+    void notifyStateChange() {
+        if (_onStateChange) {
+            _onStateChange();
+        }
+    }
+};
+```
+
+```cpp
+// Inside business logic API interface
+class WiFiManagerAPI {
+public:
+    WiFiManagerAPI(WiFiManager& wifiManager, APIServer& apiServer) 
+        : _wifiManager(wifiManager)
+        , _apiServer(apiServer)
+    {
+        // Subscribe to WiFi state changes
+        _wifiManager.onStateChange([this]() {
+            StaticJsonDocument<1024> stateDoc;
+            JsonObject state = stateDoc.to<JsonObject>();
+            _wifiManager.getStatusToJson(state);
+            _apiServer.broadcast("wifi/events", state);
+        });
+    }
+};
+```
+
+The Observer pattern (via callback) offers several advantages:
+- No polling needed (better performance), just call the `notifyStateChange()` method when you need to broadcast a state change
+- State changes are captured immediately
+- Separation of concerns conserved, at the expense of a single callback registration:
+  - Business logic (WiFiManager) notifies state changes
+  - API layer (WiFiManagerAPI) handles the event broadcasting
+- Easy to add multiple callbacks if needed
+
+> **Implementation Note:**  
+> The callback approach presented here is simpler than a full Observer pattern implementation while providing the same benefits. It's particularly useful when:
+> - State changes are infrequent or unpredictable
+> - Real-time updates are important
+> - You want to avoid polling overhead
+> If you need more flexibility, consider implementing a full Observer pattern.
 
 ### Nested Objects
 The library supports nested objects at any depth level through recursive implementation.
@@ -526,15 +597,33 @@ No constraint on request/response format:
 ## Implementation Details
 
 ### Memory Management
-- Using `StaticJsonDocument` for storing methods
-- Default size: 2048 bytes for documentation
-- Fixed stack allocation, no dynamic memory allocation during runtime
-- Vector sizes are determined at compile time
+
+#### Core Library
+- API methods and their metadata (parameters, descriptions) are stored in fixed structures
+- All internal containers (vectors, maps) use fixed sizes determined at compile time
+- No dynamic memory allocation in the core library during runtime
+- Stack allocation is used for method registration and documentation generation
+
+#### Request & Event Handling
+- The API Server only manipulates references to JsonObject/JsonArray
+- Memory allocation for requests/responses is handled by each endpoint implementation
+- Endpoints are free to choose their memory management strategy:
+  ```cpp
+  // Example: Static allocation in HTTP endpoint
+  StaticJsonDocument<1024> _requestDoc;
+  JsonObject request = _requestDoc.to<JsonObject>();
+  parseHttpRequest(request);  // Fill request object
+  
+  StaticJsonDocument<1024> _responseDoc;
+  JsonObject response = _responseDoc.to<JsonObject>();
+  _apiServer.executeMethod("some/path", &request, response);
+  ```
 
 > **Memory Considerations:**  
-> - Be mindful of stack size when using deeply nested objects
-> - Monitor memory usage with maximum expected payload sizes
-> - Consider static allocation limits on your target platform
+> - Monitor stack usage when implementing deep method chains or complex parameter structures
+> - Consider platform limitations when defining fixed container sizes
+> - Choose appropriate document sizes in endpoint implementations based on your API's needs
+> - For endpoints handling multiple simultaneous requests, consider using a pool of pre-allocated documents
 
 ### Parameter Validation
 Parameter validation is intentionally simple:

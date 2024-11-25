@@ -379,8 +379,8 @@ pio run --target uploadfs
 - Static allocation for JSON documents
 - Default buffer sizes:
   - Configuration: 1024 bytes
-  - Status updates: 512 bytes
-  - Network scan: 256 bytes per network
+  - Status updates: 1024 bytes
+  - Network scan: 1024 bytes for all networks (10 networks max)
 
 ### Connection Management
 - Automatic reconnection handling
