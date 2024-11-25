@@ -46,6 +46,7 @@ struct APIMethod {
     String description;                     // Description of the method
     std::vector<APIParam> requestParams;    // Parameters of the request
     std::vector<APIParam> responseParams;   // Parameters of the response
+    std::vector<String> exclusions;         // Liste des protocoles exclus
 };
 
 /**
@@ -98,6 +99,20 @@ public:
     // Overloaded response constructor for nested objects
     APIMethodBuilder& response(const String& name, const std::initializer_list<APIParam>& props, bool required = true) {
         _method.responseParams.push_back(APIParam(name, props, required));
+        return *this;
+    }
+
+    // Add a protocol to exclude
+    APIMethodBuilder& excl(const String& protocol) {
+        _method.exclusions.push_back(protocol);
+        return *this;
+    }
+
+    // Add multiple protocols to exclude
+    APIMethodBuilder& excl(const std::initializer_list<String>& protocols) {
+        for (const auto& protocol : protocols) {
+            _method.exclusions.push_back(protocol);
+        }
         return *this;
     }
 
@@ -219,7 +234,16 @@ public:
                         case APIMethodType::SET: requiredCap = APIEndpoint::SET; break;
                         case APIMethodType::EVT: requiredCap = APIEndpoint::EVT; break;
                     }
-                    if (proto.capabilities & requiredCap) {
+                    // Check if the protocol is supported and not excluded
+                    bool isSupported = (proto.capabilities & requiredCap);
+                    bool isExcluded = false;
+                    for (const auto& excl : method.exclusions) {
+                        if (excl == proto.name) {
+                            isExcluded = true;
+                            break;
+                        }
+                    }
+                    if (isSupported && !isExcluded) {
                         protocols.add(proto.name);
                     }
                 }
@@ -251,11 +275,31 @@ public:
     }
 
     /**
-     * @brief Gives access to the methods registered in the API server
-     * @return The methods registered in the API server
+     * @brief Get the methods registered in the API server, optionally filtered by protocol
+     * @param protocol The protocol to filter by (optional : empty to get all methods)
+     * @return The methods (filtered by protocol if specified)
      */
-    const std::map<String, APIMethod>& getMethods() const {
-        return _methods;
+    const std::map<String, APIMethod> getMethods(const String& protocol = "") const {
+        if (protocol.isEmpty()) {
+            return _methods;  // Retourne toutes les méthodes si aucun protocole n'est spécifié
+        }
+
+        std::map<String, APIMethod> filteredMethods;
+        for (const auto& [path, method] : _methods) {
+            // Vérifie si le protocole n'est pas dans la liste des exclusions
+            bool isExcluded = false;
+            for (const auto& excl : method.exclusions) {
+                if (excl == protocol) {
+                    isExcluded = true;
+                    break;
+                }
+            }
+            
+            if (!isExcluded) {
+                filteredMethods[path] = method;
+            }
+        }
+        return filteredMethods;
     }
 
     /**
@@ -286,6 +330,8 @@ public:
     void addEndpoint(APIEndpoint* endpoint) {
         _endpoints.push_back(endpoint);
     }
+
+ 
 
 private:
     std::vector<APIEndpoint*> _endpoints;   // Objects implementing APIEndpoint

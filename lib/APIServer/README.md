@@ -17,6 +17,7 @@ The APIServer library addresses a common challenge in embedded systems developme
 ### Key Challenges & Features
 - Separation of concerns between business logic and API implementation
 - Intuitive route/method declaration
+- Fully autonomous, asynchronous, non-blocking operations to serve requests
 - Automatic API documentation generation
 - Real-time event notifications support
 - Seamless integration with various protocols (HTTP, WebSocket, MQTT, Serial, etc.)
@@ -132,7 +133,7 @@ sequenceDiagram
 1. Create dedicated application API interface class for each component (e.g. `WiFiManagerAPI.h`)
 2. Declare API methods, events & handlers (setters/getters with business logic)
 3. Declare & initialize API & endpoints instances in main
-4. Poll APIServer regularly, or run within a task
+4. Poll APIServer regularly, or run within a task to let client requests be handled automatically in background
 
 > **Error handling note:**  
 > Parameter type/value checking & error handling is responsibility of business logic.
@@ -289,7 +290,7 @@ apiServer.registerMethod("wifi/events",
 );
 ```
 
-### Broadcasting Events
+##### Broadcasting Events
 Unlike other methods, events are not handled automatically upon client request, they must be called by the application API (for example to signal a status change to all connected clients).
 
 ```cpp
@@ -302,12 +303,6 @@ _apiServer.broadcast("wifi/events", status); // Push event
 To avoid managing event notifications inside business logic, it is possible to setup a periodic check for changes in application data within the application API. 
 A better solution (but introducing a small degree of coupling) is to use the Observer pattern to inform the application API that a change happened for example. With this solution, formatting and sending the event to the APIServer is automatically handled by the application API when the application data notifies a change or action.
 > **Note:** Events are automatically transmitted to all endpoints that implement protocols handling events (Websocket, MQTT for example, defined in classes derived from APIEndpoint).
-
-### Naming Patterns
-- Use hierarchical paths: `component/resource`
-- Use plural for collections: `clients/list`
-- Include action in path: `wifi/scan`
-- Clear & direct methods possible: `get_wifi_status`
 
 ### Nested Objects
 The library supports nested objects at any depth level through recursive implementation.
@@ -325,6 +320,39 @@ The library supports nested objects at any depth level through recursive impleme
     }}
 })
 ```
+
+### Protocol exclusions
+Methods can be configured to exclude specific protocols. This is useful when certain operations should not be available through specific communication channels (for security or technical reasons).
+```cpp
+// Exclude a single protocol
+apiServer.registerMethod("wifi/password",
+    APIMethodBuilder(APIMethodType::GET, handler)
+        .desc("Get WiFi password")
+        .response("password", "string")
+        .excl("http")  // Exclude from HTTP
+        .build()
+);
+
+// Exclude multiple protocols
+apiServer.registerMethod("system/reset",
+    APIMethodBuilder(APIMethodType::SET, handler)
+        .desc("Reset system")
+        .param("delay", "int")
+        .response("success", "bool")
+        .excl({"http", "mqtt"})  // Exclude from both HTTP and MQTT
+        .build()
+);
+```
+The exclusions are:
+- Automatically handled by the API Server
+- Reflected in the API documentation
+- Applied at the protocol level (excluded methods are not visible to clients)
+
+### Naming Patterns tips
+- Use hierarchical paths: `component/resource`
+- Use plural for collections: `clients/list`
+- Include action in path: `wifi/scan`
+- Clear & direct methods possible: `get_wifi_status`
 
 ## Documentation
 The library automatically generates comprehensive API documentation in JSON format. This documentation is available through the `/api` endpoint and provides a complete description of all available methods, their expected parameters (required/optional), and response structures.

@@ -144,8 +144,8 @@ private:
     void setupAPIRoutes() {
         log("WEBAPI: Configuration des routes API...");
 
-        // Routes pour les méthodes GET
-        for (const auto& [path, method] : _apiServer.getMethods()) {
+        // GET methods (HTTP GET)
+        for (const auto& [path, method] : _apiServer.getMethods("http")) {
             if (method.type == APIMethodType::GET) {
                 logf("WEBAPI: Enregistrement route GET /api/%s", path.c_str());
                 _server.on(("/api/" + path).c_str(), HTTP_GET, 
@@ -156,8 +156,8 @@ private:
             }
         }
 
-        // Routes pour les méthodes SET
-        for (const auto& [path, method] : _apiServer.getMethods()) {
+        // SET methods (HTTP POST : implicitly handled by AsyncCallbackJsonWebHandler)
+        for (const auto& [path, method] : _apiServer.getMethods("http")) {
             if (method.type == APIMethodType::SET) {
                 logf("WEBAPI: Enregistrement route SET /api/%s", path.c_str());
                 auto handler = new AsyncCallbackJsonWebHandler(
@@ -171,6 +171,7 @@ private:
             }
         }
       
+        // API Documentation route (HTTP GET)
         _server.on(API_ROUTE, HTTP_GET, [this](AsyncWebServerRequest *request) {
             log("WEBAPI: Requête GET reçue sur /api");
             handleHTTPDoc(request);
@@ -191,6 +192,7 @@ private:
 
     #ifdef USE_DYNAMIC_JSON_ALLOC
 
+    // GET methods (HTTP GET)
     void handleHTTPGet(AsyncWebServerRequest* request, const String& path) {
         if (!checkRateLimit()) {
             request->send(429, MIME_JSON, "{\"error\":\"Too Many Requests\"}");
@@ -227,6 +229,7 @@ private:
         }
     }
 
+    // POST methods (HTTP POST)
     void handleHTTPSet(AsyncWebServerRequest* request, const String& path, 
                       const JsonObject& args) {
         if (!checkRateLimit()) {
