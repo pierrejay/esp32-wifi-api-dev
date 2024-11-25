@@ -297,7 +297,10 @@
     /* @return bool */
     bool WiFiManager::applyAPConfig(const ConnectionConfig& config) {
         // If it's a configuration change, disconnect the AP first
-        if (config.enabled && apConfig.enabled) WiFi.softAPdisconnect(true);
+        if (config.enabled && apConfig.enabled) {
+            WiFi.softAPdisconnect(true);
+            apStatus.enabled = false;
+        }
 
         if (config.enabled) {
             Serial.println("wifi_ap: Applying AP configuration:");
@@ -348,6 +351,12 @@
     /* @param const ConnectionConfig& config : Configuration to apply */
     /* @return bool */
     bool WiFiManager::applySTAConfig(const ConnectionConfig& config) {
+        // If it's a configuration change, disconnect the STA first
+        if (config.enabled && staConfig.enabled) {
+            WiFi.disconnect(true);
+            staStatus.enabled = false;
+        }
+
         if (config.enabled) {
             Serial.println("wifi_sta: Applying STA configuration:");
             Serial.printf("- SSID: %s\n", config.ssid.c_str());
