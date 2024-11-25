@@ -47,28 +47,28 @@ The library's abstraction layer allows new protocols to be added by simply imple
 - Development of custom protocols
 
 ## Architecture
-
+Simplified project structure:
 ```
 project/
 ├── lib/
-│   ├── WiFiManager/           # WiFi Management Library
+│   ├── WiFiManager/              # WiFi Management Library
 │   │   ├── src/
 │   │   │   ├── WiFiManager.cpp
 │   │   │   ├── WiFiManager.h
 │   │   │   └── WiFiManagerAPI.h
-│   │   └── README.md         # WiFiManager Documentation
+│   │   └── README.md             # WiFiManager Documentation
 │   │
-│   └── APIServer/            # API Server Library
+│   └── APIServer/                # API Server Library
 │       ├── src/
 │       │   ├── APIServer.h
 │       │   ├── APIEndpoint.h
 │       │   └── WebAPIEndpoint.h
-│       └── README.md         # APIServer Documentation
+│       └── README.md             # APIServer Documentation
 │
 ├── src/
-│   └── main.cpp              # Main application
+│   └── main.cpp                  # Main application
 │
-└── README.md                 # This file
+└── README.md                     # This file
 ```
 
 ## Key Features

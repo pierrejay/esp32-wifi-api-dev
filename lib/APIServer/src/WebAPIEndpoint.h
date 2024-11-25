@@ -121,8 +121,9 @@ private:
     static constexpr size_t GET_JSON_BUF = 2048;
     static constexpr size_t SET_JSON_BUF = 512;
     static constexpr size_t DOC_JSON_BUF = 4096;
+    static constexpr size_t MAX_REQUEST_SIZE = 4096;
 
-    // Constantes pour les routes et types MIME
+    // Constants for routes and MIME types
     static constexpr const char* API_ROUTE = "/api";
     static constexpr const char* WS_ROUTE = "/api/events";
     static constexpr const char* MIME_JSON = "application/json";
@@ -143,6 +144,15 @@ private:
 
     void setupAPIRoutes() {
         log("WEBAPI: Configuration des routes API...");
+
+        // Firewall against large requests (DoS protection)
+        _server.onRequestBody([](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total) {
+            if (total > MAX_REQUEST_SIZE) {
+                request->send(400, MIME_TEXT, "Request size too large");
+                return;
+            }
+            // Normal processing
+        });
 
         // GET methods (HTTP GET)
         for (const auto& [path, method] : _apiServer.getMethods("http")) {

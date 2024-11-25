@@ -173,9 +173,11 @@ request->send(response);
 > - Consider implementing request rate limiting and monitoring heap usage in production
 
 ### Limitations
-- WebSocket events queue size: 10 messages
-- WebSocket polling interval: 50ms
-- WebSocket API disabled by default (`WS_API_ENABLED = false`)
+- HTTP requests size is limited to 4096 bytes by default (configurable with `MAX_REQUEST_SIZE`), acting as a basic "DoS firewall"
+- For REST API, only GET and POST methods are supported but this may be extended if necessary
+- WebSocket events queue size is limited to 10 messages (w/o individual message size limit)
+- WebSocket queue processing interval is 50ms by default (configurable with `WS_POLL_INTERVAL`)
+- WebSocket GET/SET API is disabled by default (`WS_API_ENABLED = false`), only events are supported
 
 ### Static File Serving
 - Root directory: `/`

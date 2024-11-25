@@ -152,7 +152,7 @@ wifimanager_app/
   │   └── APIServer/     
   │       ├── APIServer.h        // Core functionality
   │       ├── APIEndpoint.h      // Abstract endpoint implementation
-  │       ���── WebAPIEndpoint.h   // HTTP/WS server implementation
+  │       ├── WebAPIEndpoint.h   // HTTP/WS server implementation
   │       └── (...)              // Custom endpoints implementation
   └── src/
       └── main.cpp               // Main app file
@@ -241,13 +241,13 @@ void loop() {
 > - Managing requests timing is the user's responsibility: in case of very long processing times for certain methods, consider using an asynchronous approach to avoid blocking endpoints (e.g. sending an immediate response to the client to validate the request and a second response after process completion, for example through an event).
 
 > **Notes on thread-safety:**  
-> The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver. This will be a major focus for the next releases which will fully use FreeRTOS features. It will include:
+> The current design is not thread-safe, particularly when using asynchronous libraries like ESPAsyncWebserver. However, in single-thread operation the behavior is deterministic and safe and can be quite reactive with proper endpoint implementation (e.g. splitting Serial messages in chunks to avoid blocking the main task with I/O operations). This will be a major focus for the next releases which will fully use FreeRTOS features. It will include:
 > - Mutex protection for APIServer methods
 > - Event queue system for broadcasts
 > - Dedicated tasks for request handling
-> - Resource sharing protection mechanisms
-> - Proper timeout management
-> The idea is to isolate the API Server in a dedicated task to handle requests and events, while allowing the business logic to run in the main thread. This will allow to fully & safely benefit from the performance of dual core MCUs like ESP32-S3: one core can be dedicated to networking & API tasks (this is already the case for WiFi and TCP/IP stack), while the other one can run the business logic.
+> - Proper timeout management, etc.
+>
+> The idea is to isolate the API Server in a dedicated task to handle requests and events, while allowing the business logic to run in the main thread. This will allow to fully & safely benefit from the performance of dual core MCUs like ESP32-S3: one core can be dedicated to networking & API tasks (this is already the case for WiFi and TCP/IP stack), while the other one runs the business logic.
 
 
 ## API Method Declaration
@@ -271,7 +271,7 @@ apiServer.registerMethod("wifi/status",
 #### SET Methods
 - Modify system state
 - Require request parameters
-- Return success/failure response
+- Returns at least a success/failure response
 
 ```cpp
 apiServer.registerMethod("wifi/sta/config",
