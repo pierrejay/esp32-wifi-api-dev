@@ -139,7 +139,7 @@ Events are pushed from server to client as JSON messages:
 
 Two approaches are available for handling JSON responses:
 
-#### 1. Static Allocation (default)
+#### 1. Static JSON Buffers (default)
 ```cpp
 // Fixed buffer sizes for different types of responses
 static constexpr size_t GET_JSON_BUF = 2048;   // GET responses
@@ -147,7 +147,7 @@ static constexpr size_t SET_JSON_BUF = 512;    // SET responses
 static constexpr size_t DOC_JSON_BUF = 4096;   // API documentation
 static constexpr size_t WS_JSON_BUF = 1024;    // WebSocket events
 
-// Example of static allocation
+// Example usage
 StaticJsonDocument<GET_JSON_BUF> doc;
 JsonObject response = doc.to<JsonObject>();
 // ... fill response ...
@@ -156,35 +156,9 @@ serializeJson(doc, buffer);
 request->send(200, MIME_JSON, buffer);
 ```
 
-**Pros:**
-- Predictable memory usage
-- No heap fragmentation from JSON documents
-- Safer for long-running applications
-
-**Cons:**
-- String values are still allocated on heap (ArduinoJson limitation)
-- Fixed buffer sizes might be wasteful for small responses
-- Need to handle buffer overflow carefully
-- Internal queues and debug logs still use dynamic allocation
-- Not truly "static" as the name suggests
-
-> **Implementation Detail:**
-> Even in "static" mode, some dynamic allocations still occur:
-> - WebSocket event queue (std::queue<String>)
-> - Debug/startup logs (std::vector<String>)
-> 
-> For a truly static implementation, you would need to:
-> - Use fixed-size circular buffers instead of queues
-> - Pre-allocate string buffers for logs
-> - Disable debug features
-> - Use char arrays instead of String
-> 
-> However, this would make the code much more complex and rigid.
-
 #### 2. Dynamic Allocation (optional)
 Enable with `#define USE_DYNAMIC_JSON_ALLOC`
 ```cpp
-// Create dynamic response with specified capacity
 AsyncJsonResponse* response = new AsyncJsonResponse(false, GET_JSON_BUF);
 JsonObject root = response->getRoot();
 // ... fill response ...
@@ -192,44 +166,11 @@ response->setLength();
 request->send(response);
 ```
 
-**Pros:**
-- More memory efficient for varying response sizes
-- Built-in integration with ESPAsyncWebServer
-- Simpler response handling code
-
-**Cons:**
-- Can lead to heap fragmentation
-- Need to monitor heap usage carefully
-- Risk of memory allocation failures under load
-
-> **Implementation Note:**  
-> The choice between static and dynamic allocation depends on your use case:
-> - Use static allocation for predictable, small responses
-> - Consider dynamic allocation if:
->   - Response sizes vary greatly
->   - Memory is tight and fixed buffers would be wasteful
->   - You need to handle many simultaneous requests
-> - Monitor heap usage and fragmentation in both cases
-> - Consider implementing a response pool for high-traffic scenarios
-
-> **Memory Safety:**  
-> Neither approach is perfectly safe by default:
-> - Static allocation still uses heap for strings
-> - Dynamic allocation can fail under memory pressure
-> - Consider implementing:
->   - Memory monitoring
->   - Request rate limiting
->   - Response size limits
->   - Error handling for allocation failures
-
-A third approach could be implemented for maximum safety:
-- Pre-allocated response templates
-- Fixed-size string buffers
-- No dynamic allocations
-Though this will increase the complexity of the code and reduce flexibility, it will be a focus for future releases in order to ensure maximum safety in production environments.
-
-> **TLDR:**  
-> For most scenarios, the default dynamic allocation approach is fully safe and more than enough.
+> **Note on Memory Safety:**  
+> - Both approaches still use heap allocation for strings and internal queues
+> - Dynamic allocation is the recommended approach and is safe for most use cases
+> - For critical applications requiring zero dynamic allocation, a more rigid implementation will be available in future releases
+> - Consider implementing request rate limiting and monitoring heap usage in production
 
 ### Limitations
 - WebSocket events queue size: 10 messages
