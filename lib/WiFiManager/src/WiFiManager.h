@@ -163,12 +163,6 @@ public:
     void refreshAPStatus();
     void refreshSTAStatus();
 
-    // Connection control
-    bool connectAP();
-    bool disconnectAP();
-    bool connectSTA();
-    bool disconnectSTA();
-
     // Main loop method
     void poll();
 
