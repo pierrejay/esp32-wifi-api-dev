@@ -69,7 +69,7 @@ public:
             return;
         }
         _method.type = type;
-        _method.handler = [](const JsonObject*, JsonObject&) { return true; }; // Dummy handler for EVT
+        _method.handler = [](const JsonObject*, JsonObject&) { return false; }; // Dummy handler for EVT
     }
     
     // Set the description of the method
@@ -179,7 +179,6 @@ public:
             return false;  // Méthode exclue pour ce protocole
         }
 
-        // Continue avec la logique existante
         auto it = _methods.find(path);
         if (it != _methods.end()) {
             if (!validateParams(it->second, args)) {
