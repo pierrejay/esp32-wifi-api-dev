@@ -56,7 +56,11 @@ public:
     {
         // Declare supported protocols
         addProtocol("http", GET | SET);
-        addProtocol("websocket", EVT);
+        if (WS_API_ENABLED) {
+            addProtocol("websocket", GET | SET | EVT);
+        } else {
+            addProtocol("websocket", EVT);
+        }
         
         _server.addHandler(&_ws);
         
@@ -223,7 +227,7 @@ private:
         JsonObject root = response->getRoot();
         
         logf("WEBAPI: handleHTTPGet - Appel de executeMethod pour %s", path.c_str());
-        if (_apiServer.executeMethod(path, nullptr, root)) {
+        if (_apiServer.executeMethod("http", path, nullptr, root)) {
             // Debug de la réponse
             String debugResponse;
             serializeJson(root, debugResponse);
@@ -265,7 +269,7 @@ private:
         
         JsonObject root = response->getRoot();
         
-        if (_apiServer.executeMethod(path, &args, root)) {
+        if (_apiServer.executeMethod("http", path, &args, root)) {
             // Debug de la réponse
             String debugResponse;
             serializeJson(root, debugResponse);
@@ -311,7 +315,7 @@ private:
         JsonObject root = doc.to<JsonObject>();
 
         logf("WEBAPI: handleHTTPGet - Appel de executeMethod pour %s", path.c_str());
-        if (_apiServer.executeMethod(path, nullptr, root)) {
+        if (_apiServer.executeMethod("http",path, nullptr, root)) {
             // Debug de la réponse
             char responseBuffer[GET_JSON_BUF];
             serializeJson(doc, responseBuffer, GET_JSON_BUF);
@@ -345,7 +349,7 @@ private:
         StaticJsonDocument<SET_JSON_BUF> doc;
         JsonObject root = doc.to<JsonObject>();
 
-        if (_apiServer.executeMethod(path, &args, root)) {
+        if (_apiServer.executeMethod("http",path, &args, root)) {
             // Debug de la réponse
             char responseBuffer[SET_JSON_BUF];
             serializeJson(doc, responseBuffer, SET_JSON_BUF);
@@ -410,7 +414,7 @@ private:
         String method = request["method"].as<String>();
         JsonObject params = request["params"].as<JsonObject>();
         
-        if (_apiServer.executeMethod(method, &params, response)) {
+        if (_apiServer.executeMethod("websocket", method, &params, response)) {
             String responseStr;
             serializeJson(doc, responseStr);
             _ws.textAll(responseStr);

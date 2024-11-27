@@ -306,7 +306,7 @@ private:
         StaticJsonDocument<512> responseDoc;
         JsonObject response = responseDoc.to<JsonObject>();
         
-        if (_apiServer.executeMethod(cmd.path, cmd.params.empty() ? nullptr : &args, response)) {
+        if (_apiServer.executeMethod("serial",cmd.path, cmd.params.empty() ? nullptr : &args, response)) {
             pendingCmd.response = "< " + SerialFormatter::formatResponse(cmd.method, cmd.path, response);
         } else {
             pendingCmd.response = "< " + formatError(cmd.method, cmd.path, "wrong request or parameters");

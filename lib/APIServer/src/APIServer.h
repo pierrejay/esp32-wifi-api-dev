@@ -156,16 +156,30 @@ public:
      */
     void registerMethod(const String& path, const APIMethod& method) {
         _methods[path] = method;
+        if (!method.exclusions.empty()) {
+            for (const auto& excl : method.exclusions) {
+                _excludedPathsByProtocol[excl].push_back(path);
+            }
+        }
     }
 
     /**
      * @brief Execute a method
+     * @param protocol The protocol of the client (used to check if the method is excluded)
      * @param path The path of the method
      * @param args The arguments of the method
      * @param response The response of the method
      * @return True if the method has been executed, false otherwise
      */
-    bool executeMethod(const String& path, const JsonObject* args, JsonObject& response) {
+    bool executeMethod(const String& protocol, const String& path, const JsonObject* args, JsonObject& response) const {
+        // Check first if the method is excluded for this protocol
+        auto excludedPaths = _excludedPathsByProtocol.find(protocol);
+        if (excludedPaths != _excludedPathsByProtocol.end() && 
+            std::find(excludedPaths->second.begin(), excludedPaths->second.end(), path) != excludedPaths->second.end()) {
+            return false;  // Méthode exclue pour ce protocole
+        }
+
+        // Continue avec la logique existante
         auto it = _methods.find(path);
         if (it != _methods.end()) {
             if (!validateParams(it->second, args)) {
@@ -184,9 +198,16 @@ public:
     void broadcast(const String& event, const JsonObject& data) {
         for (APIEndpoint* endpoint : _endpoints) {
             for (const auto& proto : endpoint->getProtocols()) {
+                // Check if the event is not excluded for this protocol
+                auto excludedPaths = _excludedPathsByProtocol.find(proto.name);
+                if (excludedPaths != _excludedPathsByProtocol.end() && 
+                    std::find(excludedPaths->second.begin(), excludedPaths->second.end(), event) != excludedPaths->second.end()) {
+                    continue;
+                }
+                // Check if the protocol supports events
                 if (proto.capabilities & APIEndpoint::EVT) {
                     endpoint->pushEvent(event, data);
-                    break;
+                    continue;
                 }
             }
         }
@@ -278,24 +299,17 @@ public:
      * @param protocol The protocol to filter by (optional : empty to get all methods)
      * @return The methods (filtered by protocol if specified)
      */
-    const std::map<String, APIMethod>& getMethods(const String& protocol = "") const {
+    const std::map<String, APIMethod> getMethods(const String& protocol = "") const {
         if (protocol.isEmpty()) {
-            return _methods;  // Retourne toutes les méthodes si aucun protocole n'est spécifié
+            return _methods;  // Return all methods if no protocol is specified
         }
 
-        std::map<String, APIMethod> filteredMethods;
-        for (const auto& [path, method] : _methods) {
-            // Vérifie si le protocole n'est pas dans la liste des exclusions
-            bool isExcluded = false;
-            for (const auto& excl : method.exclusions) {
-                if (excl == protocol) {
-                    isExcluded = true;
-                    break;
-                }
-            }
-            
-            if (!isExcluded) {
-                filteredMethods[path] = method;
+        // Copy all methods and remove excluded ones
+        std::map<String, APIMethod> filteredMethods = _methods;
+        auto excludedPaths = _excludedPathsByProtocol.find(protocol);
+        if (excludedPaths != _excludedPathsByProtocol.end()) {
+            for (const auto& path : excludedPaths->second) {
+                filteredMethods.erase(path);
             }
         }
         return filteredMethods;
@@ -334,7 +348,8 @@ public:
 
 private:
     std::vector<APIEndpoint*> _endpoints;   // Objects implementing APIEndpoint
-    std::map<String, APIMethod> _methods;   // Registered methods (name/APIMethod map)
+    std::map<String, APIMethod> _methods;   // Registered methods (path/APIMethod map)
+    std::map<String, std::vector<String>> _excludedPathsByProtocol; // Excluded paths by protocol
 
     static String toString(APIMethodType type) {
         switch (type) {

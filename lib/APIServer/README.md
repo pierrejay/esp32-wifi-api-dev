@@ -586,6 +586,28 @@ No constraint on request/response format:
 
 ## Implementation Details
 
+### Parameter Validation
+Basic validation is intentionally lightweight:
+- Checks presence of required parameters
+- Delegates type checking to business logic
+- Only validates top-level objects
+- Catches invalid configs at compile-time
+
+> **Design Philosophy:**  
+> The library provides core validation while letting business logic handle specific requirements - maximizing flexibility without compromising code clarity.
+
+### Protocol Exclusions
+The API Server enforces protocol exclusions at the core level:
+- Methods can declare protocol exclusions during registration
+- Exclusions are checked automatically for all requests and events
+- Endpoints don't need to implement filtering logic, they just need to pass the protocol as first parameter of executeMethod
+- Provides centralized security control
+
+```cpp
+// Example: method excluded from websocket protocol
+_apiServer.executeMethod("websocket", "wifi/password", args, response);  // Returns false (like not found)
+```
+
 ### Memory Management
 
 #### Core Library
@@ -614,13 +636,3 @@ No constraint on request/response format:
 > - Size fixed containers according to platform limits
 > - Right-size JSON documents for your API needs
 > - Consider document pools for concurrent requests
-
-### Parameter Validation
-Basic validation is intentionally lightweight:
-- Checks presence of required parameters
-- Delegates type checking to business logic
-- Only validates top-level objects
-- Catches invalid configs at compile-time
-
-> **Design Philosophy:**  
-> The library provides core validation while letting business logic handle specific requirements - maximizing flexibility without compromising code clarity.
