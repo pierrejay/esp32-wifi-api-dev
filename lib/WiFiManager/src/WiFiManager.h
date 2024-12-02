@@ -124,18 +124,17 @@ public:
 
         // Serialize configuration to JSON
         void toJson(JsonObject& obj) const {
-            // Champs communs - on peut utiliser value_or() pour simplifier
-            if (enabled.has_value()) obj["enabled"] = *enabled;
-            if (ssid.has_value()) obj["ssid"] = *ssid;
-            if (password.has_value()) obj["password"] = *password;
-            if (ip.has_value()) obj["ip"] = ip->toString();
-            if (gateway.has_value()) obj["gateway"] = gateway->toString();
-            if (subnet.has_value()) obj["subnet"] = subnet->toString();
+            if (enabled.has_value())    obj["enabled"] = *enabled;
+            if (ssid.has_value())       obj["ssid"] = *ssid;
+            if (password.has_value())   obj["password"] = *password;
+            if (ip.has_value())         obj["ip"] = ip->toString();
+            if (gateway.has_value())    obj["gateway"] = gateway->toString();
+            if (subnet.has_value())     obj["subnet"] = subnet->toString();
             // AP specific fields
-            if (channel.has_value()) obj["channel"] = *channel;
-            if (hideSSID.has_value()) obj["hideSSID"] = *hideSSID;
+            if (channel.has_value())    obj["channel"] = *channel;
+            if (hideSSID.has_value())   obj["hideSSID"] = *hideSSID;
             // STA specific fields
-            if (dhcp.has_value()) obj["dhcp"] = *dhcp;
+            if (dhcp.has_value())       obj["dhcp"] = *dhcp;
         }
     
     };

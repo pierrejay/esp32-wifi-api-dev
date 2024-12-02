@@ -154,9 +154,16 @@ WiFiManager::~WiFiManager() {
     WiFi.softAPdisconnect(true);
 }
 
+
 /******************************************************************************/
 /*************** Configuration validation & application ***********************/
 /******************************************************************************/
+//
+// Memo : optionals use pointer dereferencing (*) to get value
+//        optionals use direct access (=) to set value
+//        std::nullopt for empty value
+//        has_value() & value_or() for safe reading of optionals
+//
 
 /* @brief Validate AP configuration */
 /* @param ConnectionConfig& config : Configuration to validate */
@@ -171,7 +178,7 @@ bool WiFiManager::validateAPConfig(ConnectionConfig& config) {
     else if (!config.ssid.has_value() && apConfig.ssid.has_value()) config.ssid = *apConfig.ssid;
     else if (!config.ssid.has_value() && !apConfig.ssid.has_value()) return false;
 
-    // Password: if present check length, else use AP value, or fail
+    // Password: if present check length, else use AP value, or default ("" = no password))
     if (config.password.has_value() && (config.password->length() < 8 || config.password->length() > 64)) return false;
     else if (!config.password.has_value() && apConfig.password.has_value()) config.password = *apConfig.password;
     else if (!config.password.has_value() && !apConfig.password.has_value()) return false;
@@ -200,8 +207,8 @@ bool WiFiManager::validateSTAConfig(ConnectionConfig& config) {
     else if (!config.ssid.has_value() && staConfig.ssid.has_value()) config.ssid = *staConfig.ssid;
     else if (!config.ssid.has_value() && !staConfig.ssid.has_value()) return false;
 
-    // Password: if present check length, else use STA value, or default (nullopt)
-    if (config.password.has_value() && (config.password->length() < 8 || config.password->length() > 64)) return false;
+    // Password: if present check length, else use STA value (no password = empty string)
+    if (config.password.has_value() && (config.password->length() > 64)) return false;
     else if (!config.password.has_value()) config.password = *staConfig.password; // Copy even if nullopt
 
     // Enabled: if absent use STA value, or set to false
