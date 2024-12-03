@@ -13,10 +13,13 @@
 
 // Declaration of global objects
 WiFiManager wifiManager;                                    // WiFiManager instance
-APIServer apiServer;                                        // Master API server
+APIServer apiServer({                                       // Master API server
+    "WiFiManager API",                                      // title (required)
+    "1.0.0"                                                 // version (required)
+});                                       
 WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);      // WiFiManager API interface
 WebAPIEndpoint webServer(apiServer, 80);                    // Web server endpoint (HTTP+WS)
-// SerialAPIEndpoint serialAPI(apiServer);                     // Serial API endpoint
+// SerialAPIEndpoint serialAPI(apiServer);                  // Serial API endpoint
 
 void setup() {
     Serial.begin(115200);
@@ -27,8 +30,17 @@ void setup() {
     digitalWrite(LED_BUILTIN, HIGH);
 
     //Add the web server endpoint to the API server
-    apiServer.addEndpoint(&webServer);  // Pass the address
-    // apiServer.addEndpoint(&serialAPI);  // Pass the address
+    apiServer.addEndpoint(&webServer);
+    // apiServer.addEndpoint(&serialAPI);
+
+    // Define the optional API server metadata
+    APIInfo& apiInfo = apiServer.getAPIInfo();
+    apiInfo.description = "WiFi operations control for ESP32";
+    apiInfo.serverUrl = "http://esp32.local/api";
+    apiInfo.contact.name = "Pierre Jay";
+    apiInfo.contact.email = "pierre.jay@gmail.com";
+    apiInfo.license.name = "MIT";
+    apiInfo.license.identifier = "MIT";
 
     // Check the filesystem
     if(!SPIFFS.begin(true)) {

@@ -12,6 +12,126 @@
 class WebAPIEndpoint;
 
 /**
+ * @brief Metadata about the API server
+ * @brief This structure is used to describe the API server and its capabilities.
+ * @brief It is used to generate the API documentation.
+ * @brief Only the fields marked as REQUIRED are mandatory (they must be provided in the APIInfo/APIServer constructor).
+ * @brief The other fields are optional and some of them are pre-filled with default values (security disabled by default).
+ * @brief If you need to customize them, you can do it in your main.cpp file before calling APIServer::begin().
+ * @brief Example use with the default WiFiManagerAPI module w/ WebAPIEndpoint :
+ * @code
+ * #include "WiFiManagerAPI.h"
+ * #include "APIServer.h"
+ * #include "WebAPIEndpoint.h"
+ * 
+ * // Declaration of global objects
+ * WiFiManager wifiManager;                                    // WiFiManager instance
+ * APIServer apiServer({                                       // Master API server
+ *     "WiFiManager App API",                                      // title (required)
+ *     "1.0.0",                                                    // version (required)
+ *     "http://localhost/api"                                  // serverUrl (required)
+ * });                                       
+ * WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);      // WiFiManager API interface
+ * WebAPIEndpoint webServer(apiServer, 80);                    // Web server endpoint (HTTP+WS)
+ * 
+ * void setup() {
+ *     // Add endpoint routes
+ *     apiServer.addEndpoint(&webServer);
+ * 
+ *     // Define the optional API server metadata
+ *     APIInfo& apiInfo = apiServer.getAPIInfo();
+ *     apiInfo.description = "WiFi Manager API for ESP32";
+ *     apiInfo.contact.name = "John Doe";
+ *     apiInfo.contact.email = "john.doe@example.com";
+ *     apiInfo.license.name = "MIT";
+ *     apiInfo.license.identifier = "MIT";
+ * 
+ *     // Start the API server
+ *     apiServer.begin();
+ * }
+ * @endcode
+ */
+struct APIInfo {
+    // Required fields
+    String title;               // REQUIRED. The title of the API
+    String version;             // REQUIRED. The version of the OpenAPI Document
+
+    // Optional fields
+    String serverUrl;           // Full server URL where API is accessible (e.g. "http://device.local/api"). Will be set to "/api" if not provided.
+    String description;         // A description of the API
+    
+    // Contact info (optional)
+    struct {
+        String name;            // Name of contact person/organization
+        String email;           // Contact email
+    } contact;
+
+    // License info (optional)
+    struct {
+        String name;           // REQUIRED if license object is present
+        String identifier;     // SPDX license identifier
+    } license;
+
+    // Security info (optional)
+    struct {
+        bool enabled;          // Whether security is enabled
+        String type;          // "http", "apiKey", etc.
+        String scheme;        // "bearer", "basic", etc.
+        String keyName;       // Name of the key for apiKey auth
+        String keyLocation;   // "header", "query", "cookie"
+    } security;
+
+    // Links (optional)
+    struct {
+        String termsOfService;     // Terms of service URL
+        String externalDocs;       // External documentation URL
+    } links;
+    
+    // Lifecycle (optional)
+    struct {
+        bool deprecated;           // API deprecated 
+        String deprecationDate;    // Deprecation date
+        String alternativeUrl;     // Alternative API URL
+    } lifecycle;
+    
+    // Deployment (optional)
+    struct {
+        String environment;        // dev, staging, prod...
+        bool beta;                 // Beta version
+        String region;            // Geographic region
+    } deployment;
+
+    // Standard HTTP responses - hardcoded 
+    static const char* getStandardResponse(const String& code) {
+        if (code == "400") return "Bad Request";
+        if (code == "401") return "Unauthorized";
+        if (code == "403") return "Forbidden";
+        if (code == "404") return "Not Found";
+        if (code == "405") return "Method Not Allowed";
+        if (code == "429") return "Too Many Requests";
+        if (code == "500") return "Internal Server Error";
+        if (code == "503") return "Service Unavailable";
+        return "Unknown Status Code";
+    }
+
+    // Constructor with required fields
+    APIInfo(const String& t, const String& v, const String& url = "/api") : 
+        title(t), 
+        version(v),
+        serverUrl(url), // Mandatory in OpenAPI spec, but can be dismissed (will be set to "/api" if not provided)
+        security{false, "", "", "", ""} {}
+};
+
+/**
+ * @brief Metadata about an API module
+ */
+struct APIModuleInfo {
+    String name;
+    String description;
+    std::vector<String> routes;
+};
+
+/**
  * @brief Type of API methods: GET, SET, EVT (event)
  */
 enum class APIMethodType {
@@ -21,21 +141,42 @@ enum class APIMethodType {
 };
 
 /**
+ * @brief Type of parameters authorized for APIParams (enforces types supported by the OpenAPI spec)
+ */
+enum class ParamType {
+    Boolean,
+    Integer,
+    Number,
+    String,
+    Object
+};
+constexpr const char* paramTypeToString(ParamType type) {
+    switch(type) {
+        case ParamType::Boolean: return "boolean";
+        case ParamType::Integer: return "integer";
+        case ParamType::Number: return "number";
+        case ParamType::String: return "string";
+        case ParamType::Object: return "object";
+    }
+    return ""; // Pour satisfaire le compilateur
+}
+
+/**
  * @brief Parameters of an API method (request or response)
  */
 struct APIParam {
     String name;                        // Name of the parameter
-    String type;                        // "bool", "int", "float", "string", "object"...
+    String type;                        // "boolean", "integer", "number", "string", "object"
     bool required = true;               // Default to true (can be dismissed in constructor)
     std::vector<APIParam> properties;   // Stores nested objects (recursive)
 
     // Constructor to ease initialization
-    APIParam(const String& n, const String& t, bool r = true) 
-        : name(n), type(t), required(r) {}
+    APIParam(const String& n, ParamType t, bool r = true) 
+        : name(n), type(paramTypeToString(t)), required(r) {}
 
     // Overloaded constructor for recursive nested objects
     APIParam(const String& n, const std::initializer_list<APIParam>& props, bool r = true)
-        : name(n), type("object"), required(r), properties(props) {}
+        : name(n), type(paramTypeToString(ParamType::Object)), required(r), properties(props) {}
 };
 
 struct APIMethod {
@@ -79,7 +220,7 @@ public:
     }
     
     // Add a simple parameter to the method
-    APIMethodBuilder& param(const String& name, const String& type, bool required = true) {
+    APIMethodBuilder& param(const String& name, ParamType type, bool required = true) {
         _method.requestParams.push_back(APIParam(name, type, required));
         return *this;
     }
@@ -91,7 +232,7 @@ public:
     }
     
     // Add a simple response parameter to the method
-    APIMethodBuilder& response(const String& name, const String& type, bool required = true) {
+    APIMethodBuilder& response(const String& name, ParamType type, bool required = true) {
         _method.responseParams.push_back(APIParam(name, type, required));
         return *this;
     }
@@ -130,6 +271,8 @@ private:
  */
 class APIServer {
 public:
+    APIServer(const APIInfo& info) : _apiInfo(info) {}
+    
     /**
      * @brief Initialize all endpoints
      */
@@ -150,12 +293,27 @@ public:
     }
 
     /**
+     * @brief Register an API module
+     * @param name The name of the module
+     * @param version The version of the module
+     * @param description The description of the module
+     */
+    void registerModule(const String& name, const String& description) {
+        _modules[name] = {name, description, {}};
+    }
+
+    /**
      * @brief Register a method to the API server
      * @param path The path of the method
      * @param method The method to register
      */
-    void registerMethod(const String& path, const APIMethod& method) {
+    void registerMethod(const String& module, const String& path, const APIMethod& method) {
         _methods[path] = method;
+
+        if (_modules.find(module) != _modules.end()) {
+            _modules[module].routes.push_back(path);
+        }
+
         if (!method.exclusions.empty()) {
             for (const auto& excl : method.exclusions) {
                 _excludedPathsByProtocol[excl].push_back(path);
@@ -343,11 +501,19 @@ public:
         _endpoints.push_back(endpoint);
     }
 
- 
+    /**
+     * @brief Allows to access and modify the API metadata
+     * @return A reference to the APIInfo structure
+     */
+    APIInfo& getAPIInfo() {
+        return _apiInfo;
+    }
 
 private:
-    std::vector<APIEndpoint*> _endpoints;   // Objects implementing APIEndpoint
-    std::map<String, APIMethod> _methods;   // Registered methods (path/APIMethod map)
+    APIInfo _apiInfo;                              // Metadata about the API
+    std::map<String, APIModuleInfo> _modules;      // Metadata about API modules
+    std::vector<APIEndpoint*> _endpoints;          // Objects implementing APIEndpoint
+    std::map<String, APIMethod> _methods;          // Registered methods (path/APIMethod map)
     std::map<String, std::vector<String>> _excludedPathsByProtocol; // Excluded paths by protocol
 
     static String toString(APIMethodType type) {

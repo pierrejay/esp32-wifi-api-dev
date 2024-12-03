@@ -156,6 +156,8 @@ wifimanager_app/
 
 Initialization consists of creating stack objects (globals), passing the server to the application API and endpoint, and declaring the methods to use.
 
+Global API server metadata is specified at initialization (used for documentation). It can add some more before calling `begin()` (see appropriate section on this doc). Then, each application API can register its metadata (`registerModule()`) and methods (`registerMethod()`) to the APIServer.
+
 #### Main Application Setup: main.cpp
 ```cpp
 #include "WiFiManager.h"
@@ -164,12 +166,20 @@ Initialization consists of creating stack objects (globals), passing the server 
 #include "WebAPIEndpoint.h"
 
 WiFiManager wifiManager;  
-APIServer apiServer;
+APIServer apiServer({        // Master API server
+    "WiFiManager API",       // title (required)
+    "1.0.0"                  // version (required)
+}); 
 WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
 WebAPIEndpoint webServer(apiServer, 80);
 
 void setup() {
     apiServer.addEndpoint(&webServer);
+
+    // Define the optional API server metadata
+    APIInfo& apiInfo = apiServer.getAPIInfo();
+    apiInfo.description = "WiFi operations control for ESP32";
+    apiInfo.serverUrl = "http://esp32.local/api";
     
     if (!wifiManager.begin()) {
        Serial.println("WiFiManager initialization error");
@@ -194,6 +204,14 @@ void loop() {
 #include "APIServer.h"
 
 (...)  
+
+    // Register API Module metadata
+    const String APIMODULE_NAME = "wifi";   // API Module name
+    _apiServer.registerModule(
+        APIMODULE_NAME,                     // name
+        "WiFi configuration and monitoring" // description
+    );
+
     // GET wifi/scan
     _apiServer.registerMethod("wifi/scan",
         APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
@@ -202,9 +220,9 @@ void loop() {
         })
         .desc("Scan available WiFi networks")
         .response("networks", {
-            {"ssid", "string"},
-            {"rssi", "int"},
-            {"encryption", "int"}
+            {"ssid", ParamType::String},
+            {"rssi", ParamType::Integer},
+            {"encryption", ParamType::Integer}
         })
         .build()
     );
@@ -217,14 +235,14 @@ void loop() {
             return true;
         })
         .desc("Configure Access Point")
-        .param("enabled", "bool")
-        .param("ssid", "string")
-        .param("password", "string")
-        .param("channel", "int")
-        .param("ip", "string", false)       // Optional parameter
-        .param("gateway", "string", false)  // Optional parameter
-        .param("subnet", "string", false)   // Optional parameter
-        .response("success", "bool")
+        .param("enabled", ParamType::Boolean)
+        .param("ssid", ParamType::String)
+        .param("password", ParamType::String)
+        .param("channel", ParamType::Integer)
+        .param("ip", ParamType::String, false)       // Optional parameter
+        .param("gateway", ParamType::String, false)  // Optional parameter
+        .param("subnet", ParamType::String, false)   // Optional parameter
+        .response("success", ParamType::Boolean)
         .build()
     );
     
@@ -239,9 +257,15 @@ All endpoints automatically expose the full API and handle client requests auton
 > While deterministic and safe in single-thread operation, the current design is not thread-safe, particularly with asynchronous libraries like ESPAsyncWebserver. Smart endpoint implementation (like chunking Serial messages) helps maintain reactivity without blocking the main task. Future releases will leverage FreeRTOS features for true thread safety, including mutex protection, event queues, and dedicated task handling. The API Server will run in its own task, enabling dual-core MCUs like ESP32-S3 to efficiently split networking operations and business logic across cores - similar to how WiFi and TCP/IP stacks already operate.
 
 
-## API Method Declaration
+## API Declaration
 
-### Method Types
+> **Note on parameter types:**  
+> - The supported parameter types are: `Boolean` (bool), `Integer` (intx_t, uintx_t), `Number` (float or double), `String` (String), and `Object` (JsonObject).
+> - This set is optimal for most embedded application with resource constraints and lightweight API exchanging mostly JSON data.
+> - Parameters types must be set with ParamType::Type (enum class) in the registerMethod call.
+> - Type verification is done at compile time (will fail if incorrect type is used) but stored as a normal String.
+
+### Register Methods
 
 #### GET Methods
 - Read-only operations
@@ -252,7 +276,7 @@ All endpoints automatically expose the full API and handle client requests auton
 apiServer.registerMethod("wifi/status",
     APIMethodBuilder(APIMethodType::GET, handler)
         .desc("Get WiFi status")
-        .response("status", "object")
+        .response("status", ParamType::Object)
         .build()
 );
 ```
@@ -266,9 +290,9 @@ apiServer.registerMethod("wifi/status",
 apiServer.registerMethod("wifi/sta/config",
     APIMethodBuilder(APIMethodType::SET, handler)
         .desc("Configure Station mode")
-        .param("ssid", "string")
-        .param("password", "string")
-        .response("success", "bool")
+        .param("ssid", ParamType::String)
+        .param("password", ParamType::String)
+        .response("success", ParamType::Boolean)
         .build()
 );
 ```
@@ -282,7 +306,7 @@ apiServer.registerMethod("wifi/sta/config",
 apiServer.registerMethod("wifi/events",
     APIMethodBuilder(APIMethodType::EVT)
         .desc("WiFi status updates")
-        .response("status", "object")
+        .response("status", ParamType::Object)
         .build()
 );
 ```
@@ -415,7 +439,7 @@ The exclusions are:
 - Clear & direct methods possible: `get_wifi_status`
 
 ## Documentation
-The library automatically generates comprehensive API documentation in JSON format. This documentation is available through the `/api` endpoint and provides a complete description of all available methods, their expected parameters (required/optional), and response structures.
+The library automatically generates comprehensive, simplified API documentation in JSON format. This documentation is available through the `/api` endpoint and provides a complete description of all available methods, their expected parameters (required/optional), and response structures.
 
 ### Example Generated Documentation
 ```json
@@ -467,6 +491,33 @@ The library automatically generates comprehensive API documentation in JSON form
   }]
 }
 ```
+
+### Automatic OpenAPI Documentation
+The library generates OpenAPI 3.1.1 documentation in both JSON and YAML formats:
+
+1. Documentation files are generated at compile time and stored in the `/data` directory:
+   - `/data/openapi.json`
+   - `/data/openapi.yaml`
+
+2. Files are served statically at runtime:
+   - `http://device.local/api/openapi.json`
+   - `http://device.local/api/openapi.yaml`
+
+This approach:
+- Preserves ESP32 resources (no runtime generation, data stored in flash)
+- Provides standard OpenAPI documentation
+- Supports visualization tools like Swagger UI
+- Allows offline documentation access
+
+> **Note:** Documentation generation details are available in the API Parser documentation.
+
+The generated documentation includes:
+- Global API metadata
+- Module-based tags
+- All methods with parameters & responses
+- Type information
+- Required/optional fields
+
 
 ## Available Implementations
 

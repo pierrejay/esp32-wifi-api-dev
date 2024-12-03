@@ -1,0 +1,173 @@
+{
+  "info": {
+    "contact": {
+      "email": "",
+      "name": "Pierre"
+    },
+    "description": "WiFi configuration and monitoring API",
+    "license": {
+      "identifier": "MIT",
+      "name": "MIT"
+    },
+    "title": "WiFi Manager API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.1",
+  "paths": {
+    "/wifi/config": {
+      "get": {
+        "description": "Get WiFi configuration",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ap": {
+                      "properties": {
+                        "channel": {
+                          "required": true,
+                          "type": "integer"
+                        },
+                        "enabled": {
+                          "required": true,
+                          "type": "boolean"
+                        },
+                        "hidden": {
+                          "required": true,
+                          "type": "boolean"
+                        },
+                        "password": {
+                          "required": true,
+                          "type": "string"
+                        },
+                        "ssid": {
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "sta": {
+                      "properties": {
+                        "enabled": {
+                          "required": true,
+                          "type": "boolean"
+                        },
+                        "hostname": {
+                          "required": true,
+                          "type": "string"
+                        },
+                        "password": {
+                          "required": true,
+                          "type": "string"
+                        },
+                        "ssid": {
+                          "required": true,
+                          "type": "string"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "ap",
+                    "sta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        },
+        "tags": [
+          "wifi"
+        ]
+      }
+    },
+    "/wifi/status": {
+      "get": {
+        "description": "Get WiFi status",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "ap": {
+                      "properties": {
+                        "clients": {
+                          "required": true,
+                          "type": "integer"
+                        },
+                        "connected": {
+                          "required": true,
+                          "type": "boolean"
+                        },
+                        "enabled": {
+                          "required": true,
+                          "type": "boolean"
+                        },
+                        "ip": {
+                          "required": true,
+                          "type": "string"
+                        },
+                        "rssi": {
+                          "required": true,
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    },
+                    "sta": {
+                      "properties": {
+                        "connected": {
+                          "required": true,
+                          "type": "boolean"
+                        },
+                        "enabled": {
+                          "required": true,
+                          "type": "boolean"
+                        },
+                        "ip": {
+                          "required": true,
+                          "type": "string"
+                        },
+                        "rssi": {
+                          "required": true,
+                          "type": "integer"
+                        }
+                      },
+                      "type": "object"
+                    }
+                  },
+                  "required": [
+                    "ap",
+                    "sta"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful operation"
+          }
+        },
+        "tags": [
+          "wifi"
+        ]
+      }
+    }
+  },
+  "servers": [
+    {
+      "url": "http://device.local/api"
+    }
+  ],
+  "tags": [
+    {
+      "description": "WiFi configuration and monitoring",
+      "name": "wifi"
+    }
+  ]
+}

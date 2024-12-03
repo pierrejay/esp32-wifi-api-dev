@@ -48,8 +48,16 @@ private:
      * @brief Register the methods to the API server
      */
     void registerMethods() const {
+
+        // Register API Module metadata (allows to group methods by tags in the documentation)
+        const String APIMODULE_NAME = "wifi"; // API Module name (must be consistent with module name in registerMethod calls)
+        _apiServer.registerModule(
+            APIMODULE_NAME,                    // name
+            "WiFi configuration and monitoring"     // description
+        );
+
         // GET wifi/status
-        _apiServer.registerMethod("wifi/status", 
+        _apiServer.registerMethod(APIMODULE_NAME, "wifi/status", 
             APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
                 Serial.println("WIFIAPI: Exécution de GET wifi/status");
                 _wifiManager.getStatusToJson(response);
@@ -62,23 +70,23 @@ private:
             })
             .desc("Get WiFi status")
             .response("ap", {
-                {"enabled", "bool"},
-                {"connected", "bool"},
-                {"clients", "int"},
-                {"ip", "string"},
-                {"rssi", "int"}
+                {"enabled", ParamType::Boolean},
+                {"connected", ParamType::Boolean},
+                {"clients", ParamType::Integer},
+                {"ip", ParamType::String},
+                {"rssi", ParamType::Integer}
             })
             .response("sta", {
-                {"enabled", "bool"},
-                {"connected", "bool"},
-                {"ip", "string"},
-                {"rssi", "int"}
+                {"enabled", ParamType::Boolean},
+                {"connected", ParamType::Boolean},
+                {"ip", ParamType::String},
+                {"rssi", ParamType::Integer}
             })
             .build()
         );
 
         // GET wifi/config
-        _apiServer.registerMethod("wifi/config",
+        _apiServer.registerMethod(APIMODULE_NAME, "wifi/config",
             APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
                 Serial.println("WIFIAPI: Exécution de GET wifi/config");
                 _wifiManager.getConfigToJson(response);
@@ -91,28 +99,28 @@ private:
             })
             .desc("Get WiFi configuration")
             .response("ap", {
-                {"enabled", "bool"},
-                {"ssid", "string"},
-                {"password", "string"},
-                {"channel", "int"},
-                {"ip", "string"},
-                {"gateway", "string"},
-                {"subnet", "string"}
+                {"enabled",     ParamType::Boolean},
+                {"ssid",        ParamType::String},
+                {"password",    ParamType::String},
+                {"channel",     ParamType::Integer},
+                {"ip",          ParamType::String},
+                {"gateway",     ParamType::String},
+                {"subnet",      ParamType::String}
             })
             .response("sta", {
-                {"enabled", "bool"},
-                {"ssid", "string"},
-                {"password", "string"},
-                {"dhcp", "bool"},
-                {"ip", "string"},
-                {"gateway", "string"},
-                {"subnet", "string"}
+                {"enabled",     ParamType::Boolean},
+                {"ssid",        ParamType::String},
+                {"password",    ParamType::String},
+                {"dhcp",        ParamType::Boolean},
+                {"ip",          ParamType::String},
+                {"gateway",     ParamType::String},
+                {"subnet",      ParamType::String}
             })
             .build()
         );
 
         // GET wifi/scan
-        _apiServer.registerMethod("wifi/scan",
+        _apiServer.registerMethod(APIMODULE_NAME, "wifi/scan",
             APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
                 Serial.println("WIFIAPI: Exécution de GET wifi/scan");
                 _wifiManager.getAvailableNetworks(response);
@@ -125,53 +133,53 @@ private:
             })
             .desc("Scan available WiFi networks")
             .response("networks", {
-                {"ssid", "string"},
-                {"rssi", "int"},
-                {"encryption", "int"}
+                {"ssid",        ParamType::String},
+                {"rssi",        ParamType::Integer},
+                {"encryption",  ParamType::Integer}
             })
             .build()
         );
 
         // SET wifi/ap/config
-        _apiServer.registerMethod("wifi/ap/config",
+        _apiServer.registerMethod(APIMODULE_NAME, "wifi/ap/config",
             APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
                 bool success = _wifiManager.setAPConfigFromJson(*args);
                 response["success"] = success;
                 return true;
             })
             .desc("Configure Access Point")
-            .param("enabled", "bool")
-            .param("ssid", "string")
-            .param("password", "string")
-            .param("channel", "int")
-            .param("ip", "string", false)       // Optional
-            .param("gateway", "string", false)  // Optional
-            .param("subnet", "string", false)   // Optional
-            .response("success", "bool")
+            .param("enabled",   ParamType::Boolean)
+            .param("ssid",      ParamType::String)
+            .param("password",  ParamType::String)
+            .param("channel",   ParamType::Integer)
+            .param("ip",        ParamType::String, false)  // Optional
+            .param("gateway",   ParamType::String, false)  // Optional
+            .param("subnet",    ParamType::String, false)  // Optional
+            .response("success",ParamType::Boolean)
             .build()
         );
 
         // SET wifi/sta/config
-        _apiServer.registerMethod("wifi/sta/config",
+        _apiServer.registerMethod(APIMODULE_NAME, "wifi/sta/config",
             APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
                 bool success = _wifiManager.setSTAConfigFromJson(*args);
                 response["success"] = success;
                 return true;
             })
             .desc("Configure Station mode")
-            .param("enabled", "bool")
-            .param("ssid", "string")
-            .param("password", "string")
-            .param("dhcp", "bool")
-            .param("ip", "string", false)       // Optional
-            .param("gateway", "string", false)  // Optional
-            .param("subnet", "string", false)   // Optional
-            .response("success", "bool")
+            .param("enabled",   ParamType::Boolean)
+            .param("ssid",      ParamType::String)
+            .param("password",  ParamType::String)
+            .param("dhcp",      ParamType::Boolean)
+            .param("ip",        ParamType::String, false)  // Optional
+            .param("gateway",   ParamType::String, false)  // Optional
+            .param("subnet",    ParamType::String, false)  // Optional
+            .response("success",ParamType::Boolean)
             .build()
         );
 
         // SET wifi/hostname
-        _apiServer.registerMethod("wifi/hostname",
+        _apiServer.registerMethod(APIMODULE_NAME, "wifi/hostname",
             APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
                 if (!(*args)["hostname"].is<const char*>()) {
                     return false;
@@ -181,48 +189,48 @@ private:
                 return true;
             })
             .desc("Set device hostname")
-            .param("hostname", "string")
-            .response("success", "bool")
+            .param("hostname",        ParamType::String)
+            .response("success", ParamType::Boolean)
             .build()
         );
 
         // EVT wifi/events
-        _apiServer.registerMethod("wifi/events",
+        _apiServer.registerMethod(APIMODULE_NAME, "wifi/events",
             APIMethodBuilder(APIMethodType::EVT)
             .desc("WiFi status and configuration updates")
             .response("status", {
                 {"ap", {
-                    {"enabled", "bool"},
-                    {"connected", "bool"},
-                    {"clients", "int"},
-                    {"ip", "string"},
-                    {"rssi", "int"}
+                    {"enabled",     ParamType::Boolean},
+                    {"connected",   ParamType::Boolean},
+                    {"clients",     ParamType::Integer},
+                    {"ip",          ParamType::String},
+                    {"rssi",        ParamType::Integer}
                 }},
                 {"sta", {
-                    {"enabled", "bool"},
-                    {"connected", "bool"},
-                    {"ip", "string"},
-                    {"rssi", "int"}
+                    {"enabled",     ParamType::Boolean},
+                    {"connected",   ParamType::Boolean},
+                    {"ip",          ParamType::String},
+                    {"rssi",        ParamType::Integer}
                 }}
             })
             .response("config", {
                 {"ap", {
-                    {"enabled", "bool"},
-                    {"ssid", "string"},
-                    {"password", "string"},
-                    {"channel", "int"},
-                    {"ip", "string"},
-                    {"gateway", "string"},
-                    {"subnet", "string"}
+                    {"enabled",     ParamType::Boolean},
+                    {"ssid",        ParamType::String},
+                    {"password",    ParamType::String},
+                    {"channel",     ParamType::Integer},
+                    {"ip",          ParamType::String},
+                    {"gateway",     ParamType::String},
+                    {"subnet",      ParamType::String}
                 }},
-                {"sta", {
-                    {"enabled", "bool"},
-                    {"ssid", "string"},
-                    {"password", "string"},
-                    {"dhcp", "bool"},
-                    {"ip", "string"},
-                    {"gateway", "string"},
-                    {"subnet", "string"}
+            {"sta", {
+                    {"enabled",     ParamType::Boolean},
+                    {"ssid",        ParamType::String},
+                    {"password",    ParamType::String},
+                    {"dhcp",        ParamType::Boolean},
+                    {"ip",          ParamType::String},
+                    {"gateway",     ParamType::String},
+                    {"subnet",      ParamType::String}
                 }}
             })
             .build()
