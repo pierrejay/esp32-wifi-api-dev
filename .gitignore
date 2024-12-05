@@ -4,4 +4,5 @@
 .vscode/launch.json
 .vscode/ipch
 .DS_Store
+.trash
 archive_docs/*
