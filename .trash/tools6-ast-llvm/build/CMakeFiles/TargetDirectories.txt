@@ -1,0 +1,10 @@
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/intrinsics_gen.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/omp_gen.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/acc_gen.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/ARMTargetParserTableGen.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/AArch64TargetParserTableGen.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/RISCVTargetParserTableGen.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/clang-tablegen-targets.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/api_doc_gen.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/edit_cache.dir
+/Users/pierre/Documents/PlatformIO/Projects/wifi-manager-new/tools6/build/CMakeFiles/rebuild_cache.dir

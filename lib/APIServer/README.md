@@ -156,7 +156,7 @@ wifimanager_app/
 
 Initialization consists of creating stack objects (globals), passing the server to the application API and endpoint, and declaring the methods to use.
 
-Global API server metadata is specified at initialization (used for documentation). It can add some more before calling `begin()` (see appropriate section on this doc). Then, each application API can register its metadata (`registerModule()`) and methods (`registerMethod()`) to the APIServer.
+Global API server metadata is specified at initialization (used for documentation). You can add some more before calling `begin()`. Then, each application API can register its metadata (`registerModule()`) and methods (`registerMethod()`) to the APIServer. See the appropriate sections below for more details on API metadata.
 
 #### Main Application Setup: main.cpp
 ```cpp
@@ -166,20 +166,20 @@ Global API server metadata is specified at initialization (used for documentatio
 #include "WebAPIEndpoint.h"
 
 WiFiManager wifiManager;  
-APIServer apiServer({        // Master API server
-    "WiFiManager API",       // title (required)
-    "1.0.0"                  // version (required)
-}); 
+APIServer apiServer; 
 WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);
 WebAPIEndpoint webServer(apiServer, 80);
 
 void setup() {
-    apiServer.addEndpoint(&webServer);
-
     // Define the optional API server metadata
-    APIInfo& apiInfo = apiServer.getAPIInfo();
+    APIInfo apiInfo;
+    apiInfo.title = "WiFiManager API";
+    apiInfo.version = "1.0.0";
     apiInfo.description = "WiFi operations control for ESP32";
     apiInfo.serverUrl = "http://esp32.local/api";
+    apiServer.registerAPIInfo(apiInfo);
+
+    apiServer.addEndpoint(&webServer);
     
     if (!wifiManager.begin()) {
        Serial.println("WiFiManager initialization error");
@@ -205,11 +205,13 @@ void loop() {
 
 (...)  
 
-    // Register API Module metadata
     const String APIMODULE_NAME = "wifi";   // API Module name
-    _apiServer.registerModule(
+
+    // Register API Module metadata
+    _apiServer.registerModuleInfo(
         APIMODULE_NAME,                     // name
-        "WiFi configuration and monitoring" // description
+        "WiFi configuration and monitoring", // description
+        "1.0.0"                              // version
     );
 
     // GET wifi/scan
@@ -220,9 +222,9 @@ void loop() {
         })
         .desc("Scan available WiFi networks")
         .response("networks", {
-            {"ssid", ParamType::String},
-            {"rssi", ParamType::Integer},
-            {"encryption", ParamType::Integer}
+            {"ssid", APIParamType::String},
+            {"rssi", APIParamType::Integer},
+            {"encryption", APIParamType::Integer}
         })
         .build()
     );
@@ -235,14 +237,14 @@ void loop() {
             return true;
         })
         .desc("Configure Access Point")
-        .param("enabled", ParamType::Boolean)
-        .param("ssid", ParamType::String)
-        .param("password", ParamType::String)
-        .param("channel", ParamType::Integer)
-        .param("ip", ParamType::String, false)       // Optional parameter
-        .param("gateway", ParamType::String, false)  // Optional parameter
-        .param("subnet", ParamType::String, false)   // Optional parameter
-        .response("success", ParamType::Boolean)
+        .param("enabled", APIParamType::Boolean)
+        .param("ssid", APIParamType::String)
+        .param("password", APIParamType::String)
+        .param("channel", APIParamType::Integer)
+        .param("ip", APIParamType::String, false)       // Optional parameter
+        .param("gateway", APIParamType::String, false)  // Optional parameter
+        .param("subnet", APIParamType::String, false)   // Optional parameter
+        .response("success", APIParamType::Boolean)
         .build()
     );
     
@@ -262,7 +264,7 @@ All endpoints automatically expose the full API and handle client requests auton
 > **Note on parameter types:**  
 > - The supported parameter types are: `Boolean` (bool), `Integer` (intx_t, uintx_t), `Number` (float or double), `String` (String), and `Object` (JsonObject).
 > - This set is optimal for most embedded application with resource constraints and lightweight API exchanging mostly JSON data.
-> - Parameters types must be set with ParamType::Type (enum class) in the registerMethod call.
+> - Parameters types must be set with APIParamType::Type (enum class) in the registerMethod call.
 > - Type verification is done at compile time (will fail if incorrect type is used) but stored as a normal String.
 
 ### Register Methods
@@ -276,7 +278,7 @@ All endpoints automatically expose the full API and handle client requests auton
 apiServer.registerMethod("wifi/status",
     APIMethodBuilder(APIMethodType::GET, handler)
         .desc("Get WiFi status")
-        .response("status", ParamType::Object)
+        .response("status", APIParamType::Object)
         .build()
 );
 ```
@@ -290,9 +292,9 @@ apiServer.registerMethod("wifi/status",
 apiServer.registerMethod("wifi/sta/config",
     APIMethodBuilder(APIMethodType::SET, handler)
         .desc("Configure Station mode")
-        .param("ssid", ParamType::String)
-        .param("password", ParamType::String)
-        .response("success", ParamType::Boolean)
+        .param("ssid", APIParamType::String)
+        .param("password", APIParamType::String)
+        .response("success", APIParamType::Boolean)
         .build()
 );
 ```
@@ -306,7 +308,7 @@ apiServer.registerMethod("wifi/sta/config",
 apiServer.registerMethod("wifi/events",
     APIMethodBuilder(APIMethodType::EVT)
         .desc("WiFi status updates")
-        .response("status", ParamType::Object)
+        .response("status", APIParamType::Object)
         .build()
 );
 ```
@@ -439,9 +441,12 @@ The exclusions are:
 - Clear & direct methods possible: `get_wifi_status`
 
 ## Documentation
-The library automatically generates comprehensive, simplified API documentation in JSON format. This documentation is available through the `/api` endpoint and provides a complete description of all available methods, their expected parameters (required/optional), and response structures.
 
-### Example Generated Documentation
+### Simplified Documentation
+
+The library automatically generates a comprehensive, simplified API documentation in JSON format. This documentation is available through the `/api` endpoint (dynamically generated) and provides a complete description of all available methods, their expected parameters (required/optional), and response structures.
+
+#### Example Generated Simplified Documentation
 ```json
 {
   "methods": [{
@@ -492,8 +497,8 @@ The library automatically generates comprehensive, simplified API documentation 
 }
 ```
 
-### Automatic OpenAPI Documentation
-The library generates OpenAPI 3.1.1 documentation in both JSON and YAML formats:
+### OpenAPI Documentation
+The library automaticallygenerates OpenAPI 3.1.1 documentation in both JSON and YAML formats:
 
 1. Documentation files are generated at compile time and stored in the `/data` directory:
    - `/data/openapi.json`
@@ -511,13 +516,78 @@ This approach:
 
 > **Note:** Documentation generation details are available in the API Parser documentation.
 
-The generated documentation includes:
-- Global API metadata
-- Module-based tags
-- All methods with parameters & responses
-- Type information
-- Required/optional fields
+To allow OpenAPI documentation generation, at least the global API metadata must be registered. Two levels of metadata are supported by the API Server:
+- Global API metadata : mandatory for documentation generation (requirement of the OpenAPI spec)
+- API module metadata (per module) : optional, but recommended as it will nicely group methods in the documentation
+The OpenAPI documentation feature is totally optional: if you don't need it, you can safely ignore this section and will not be required to register any metadata.
 
+#### Global API metadata
+
+The global API metadata must be registered using one of the two `registerAPIInfo` methods before calling `begin()` (preferably in the `setup()` function):
+
+1. Simple method (required fields only):
+```cpp
+apiServer.registerAPIInfo(
+    "WiFiManager API",          // title (required)
+    "1.0.0",                    // version (required)
+    "http://device.local/api"   // serverUrl (optional, will be set to "/api" if not provided)
+);
+```
+
+2. Complete method using APIInfo object:
+```cpp
+APIInfo apiInfo;
+apiInfo.title = "WiFiManager API";
+apiInfo.version = "1.0.0";
+apiInfo.description = "WiFi operations control for ESP32";
+apiInfo.serverUrl = "http://esp32.local/api";
+apiInfo.license = "MIT";
+apiInfo.contact.name = "Pierre Jay";
+apiInfo.contact.email = "pierre.jay@gmail.com";
+apiServer.registerAPIInfo(apiInfo);
+```
+
+Supported fields in APIInfo:
+
+| Category | Field | Type | Description | Required |
+|----------|-------|------|-------------|----------|
+| Base | title | string | The title of the API | Yes |
+| Base | version | string | The version of the API | Yes |
+| Base | serverUrl | string | Full server URL where API is accessible | No |
+| Base | description | string | A description of the API | No |
+| Base | license | string | License name (e.g. "MIT") | No |
+| Contact | contact.name | string | Name of contact person/organization | No |
+| Contact | contact.email | string | Contact email | No |
+| Security | security.enabled | bool | Whether security is enabled | No |
+| Security | security.type | string | "http", "apiKey", etc. | No |
+| Security | security.scheme | string | "bearer", "basic", etc. | No |
+| Security | security.keyName | string | Name of the key for apiKey auth | No |
+| Security | security.keyLocation | string | "header", "query", "cookie" | No |
+| Links | links.termsOfService | string | Terms of service URL | No |
+| Links | links.externalDocs | string | External documentation URL | No |
+| Lifecycle | lifecycle.deprecated | bool | API deprecated | No |
+| Lifecycle | lifecycle.deprecationDate | string | Deprecation date | No |
+| Lifecycle | lifecycle.alternativeUrl | string | Alternative API URL | No |
+| Deployment | deployment.environment | string | dev, staging, prod... | No |
+| Deployment | deployment.beta | bool | Beta version | No |
+| Deployment | deployment.region | string | Geographic region | No |
+
+#### API Module metadata
+
+Each API implementation can register its metadata ("module metadata") using the `registerModuleInfo` method, preferably within its implementation constructor before registering any methods. Routes are automatically appended to the module metadata when methods are registered.
+
+```cpp
+// Register API Module metadata
+_apiServer.registerModuleInfo(
+    "wifi",                              // name (required)
+    "WiFi configuration and monitoring", // description (required)
+    "1.0.0"                              // version (optional)
+);
+```
+
+The module metadata helps organize the API documentation by grouping related methods together using the `tags` field. Each module's routes list is automatically maintained by the API Server as methods are registered.
+
+> **Note:** The module name must be consistent between the `registerModuleInfo` call and the `registerMethod` calls. This is not enforced at runtime in order to keep the API server as user-friendly as possible, but it will lead to incorrect documentation if not respected.
 
 ## Available Implementations
 

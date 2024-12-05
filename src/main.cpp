@@ -7,19 +7,19 @@
 #include "SerialAPIEndpoint.h"
 #include "result.h"
 #include "SerialProxy.h"
+#include "api_doc.h"
 
 // Proxy server for Serial port
 // #define Serial SerialAPIEndpoint::proxy
 
 // Declaration of global objects
 WiFiManager wifiManager;                                    // WiFiManager instance
-APIServer apiServer({                                       // Master API server
-    "WiFiManager API",                                      // title (required)
-    "1.0.0"                                                 // version (required)
-});                                       
+APIServer apiServer;                                        // APIServer instance                                       
 WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);      // WiFiManager API interface
 WebAPIEndpoint webServer(apiServer, 80);                    // Web server endpoint (HTTP+WS)
 // SerialAPIEndpoint serialAPI(apiServer);                  // Serial API endpoint
+
+#define GENERATE_API_DOC 1  // Mettre à 0 pour désactiver
 
 void setup() {
     Serial.begin(115200);
@@ -28,19 +28,6 @@ void setup() {
 
     pinMode(LED_BUILTIN, OUTPUT);
     digitalWrite(LED_BUILTIN, HIGH);
-
-    //Add the web server endpoint to the API server
-    apiServer.addEndpoint(&webServer);
-    // apiServer.addEndpoint(&serialAPI);
-
-    // Define the optional API server metadata
-    APIInfo& apiInfo = apiServer.getAPIInfo();
-    apiInfo.description = "WiFi operations control for ESP32";
-    apiInfo.serverUrl = "http://esp32.local/api";
-    apiInfo.contact.name = "Pierre Jay";
-    apiInfo.contact.email = "pierre.jay@gmail.com";
-    apiInfo.license.name = "MIT";
-    apiInfo.license.identifier = "MIT";
 
     // Check the filesystem
     if(!SPIFFS.begin(true)) {
@@ -51,6 +38,23 @@ void setup() {
         }
     }
 
+    //@API_DOC_SECTION_START
+    // Register the API metadata
+    APIInfo apiInfo;
+    apiInfo.title = "WiFiManager API";
+    apiInfo.version = "1.0.0";
+    apiInfo.description = "WiFi operations control for ESP32";
+    apiInfo.serverUrl = "http://esp32.local/api";
+    apiInfo.license = "MIT";
+    apiInfo.contact.name = "Pierre Jay";
+    apiInfo.contact.email = "pierre.jay@gmail.com";
+    apiServer.registerAPIInfo(apiInfo);
+    //@API_DOC_SECTION_END
+
+    //Add the web server endpoint to the API server
+    apiServer.addEndpoint(&webServer);
+    // apiServer.addEndpoint(&serialAPI);
+
     // Initialize the WiFiManager
     if (!wifiManager.begin()) {
         Serial.println("Error initializing WiFiManager");
@@ -59,6 +63,16 @@ void setup() {
             delay(200);
         }
     }
+
+#if GENERATE_API_DOC
+    // Générer la documentation OpenAPI
+    Serial.println("Generating OpenAPI documentation...");
+    if (apiServer.generateAndSaveOpenAPIDoc(SPIFFS)) {
+        Serial.println("OpenAPI documentation generated successfully");
+    } else {
+        Serial.println("Failed to generate OpenAPI documentation");
+    }
+#endif
 
     // Start the API server
     apiServer.begin(); 

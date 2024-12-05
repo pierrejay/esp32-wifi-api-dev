@@ -1,26 +1,22 @@
 cmake_minimum_required(VERSION 3.10)
-project(api_doc_generator)
+project(gen)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Find required packages
-find_package(nlohmann_json 3.11.2 REQUIRED)
+# Désactiver les warnings
+if (MSVC)
+    add_compile_options(/w)
+else()
+    add_compile_options(-w)
+endif()
 
-# Set yaml-cpp paths manually
-set(YAML_CPP_INCLUDE_DIR "/usr/local/include")
-set(YAML_CPP_LIBRARY "/usr/local/lib/libyaml-cpp.dylib")
+# Ajouter le chemin vers ArduinoJson
+include_directories(BEFORE ${CMAKE_SOURCE_DIR}/deps)
+include_directories(${CMAKE_SOURCE_DIR}/deps/ArduinoJson/src)
 
-# Add executable
-add_executable(api_doc_generator api_doc_generator.cpp)
+# Ajouter l'exécutable
+add_executable(gen gen.cpp)
 
-# Link libraries
-target_link_libraries(api_doc_generator PRIVATE
-    nlohmann_json::nlohmann_json
-    ${YAML_CPP_LIBRARY}
-)
-
-# Include directories
-target_include_directories(api_doc_generator PRIVATE
-    ${YAML_CPP_INCLUDE_DIR}
-)
+# Si besoin de flags de compilation supplémentaires
+target_compile_options(gen PRIVATE -Wall -Wextra) 

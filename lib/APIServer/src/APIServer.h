@@ -11,66 +11,30 @@
 // Forward declarations of API endpoints implementations
 class WebAPIEndpoint;
 
+
+
+//##############################################################################
+//                            Metadata structures
+//##############################################################################
+
 /**
- * @brief Metadata about the API server
- * @brief This structure is used to describe the API server and its capabilities.
- * @brief It is used to generate the API documentation.
- * @brief Only the fields marked as REQUIRED are mandatory (they must be provided in the APIInfo/APIServer constructor).
- * @brief The other fields are optional and some of them are pre-filled with default values (security disabled by default).
- * @brief If you need to customize them, you can do it in your main.cpp file before calling APIServer::begin().
- * @brief Example use with the default WiFiManagerAPI module w/ WebAPIEndpoint :
- * @code
- * #include "WiFiManagerAPI.h"
- * #include "APIServer.h"
- * #include "WebAPIEndpoint.h"
- * 
- * // Declaration of global objects
- * WiFiManager wifiManager;                                    // WiFiManager instance
- * APIServer apiServer({                                       // Master API server
- *     "WiFiManager App API",                                      // title (required)
- *     "1.0.0",                                                    // version (required)
- *     "http://localhost/api"                                  // serverUrl (required)
- * });                                       
- * WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);      // WiFiManager API interface
- * WebAPIEndpoint webServer(apiServer, 80);                    // Web server endpoint (HTTP+WS)
- * 
- * void setup() {
- *     // Add endpoint routes
- *     apiServer.addEndpoint(&webServer);
- * 
- *     // Define the optional API server metadata
- *     APIInfo& apiInfo = apiServer.getAPIInfo();
- *     apiInfo.description = "WiFi Manager API for ESP32";
- *     apiInfo.contact.name = "John Doe";
- *     apiInfo.contact.email = "john.doe@example.com";
- *     apiInfo.license.name = "MIT";
- *     apiInfo.license.identifier = "MIT";
- * 
- *     // Start the API server
- *     apiServer.begin();
- * }
- * @endcode
+ * @brief API server metadata
  */
 struct APIInfo {
-    // Required fields
+    // Required base fields
     String title;               // REQUIRED. The title of the API
     String version;             // REQUIRED. The version of the OpenAPI Document
 
-    // Optional fields
-    String serverUrl;           // Full server URL where API is accessible (e.g. "http://device.local/api"). Will be set to "/api" if not provided.
+    // Optional base fields
+    String serverUrl = "/api";  // Full server URL where API is accessible (e.g. "http://device.local/api"). Will be set to "/api" if not provided.
     String description;         // A description of the API
+    String license;             // License name (e.g. "MIT")    
     
     // Contact info (optional)
     struct {
         String name;            // Name of contact person/organization
         String email;           // Contact email
     } contact;
-
-    // License info (optional)
-    struct {
-        String name;           // REQUIRED if license object is present
-        String identifier;     // SPDX license identifier
-    } license;
 
     // Security info (optional)
     struct {
@@ -114,22 +78,23 @@ struct APIInfo {
         return "Unknown Status Code";
     }
 
-    // Constructor with required fields
-    APIInfo(const String& t, const String& v, const String& url = "/api") : 
-        title(t), 
-        version(v),
-        serverUrl(url), // Mandatory in OpenAPI spec, but can be dismissed (will be set to "/api" if not provided)
-        security{false, "", "", "", ""} {}
 };
 
 /**
- * @brief Metadata about an API module
+ * @brief API module (business logic) metadata
  */
 struct APIModuleInfo {
-    String name;
     String description;
+    String version;
     std::vector<String> routes;
 };
+
+
+
+
+//##############################################################################
+//                            API method & params types
+//##############################################################################
 
 /**
  * @brief Type of API methods: GET, SET, EVT (event)
@@ -143,23 +108,30 @@ enum class APIMethodType {
 /**
  * @brief Type of parameters authorized for APIParams (enforces types supported by the OpenAPI spec)
  */
-enum class ParamType {
+enum class APIParamType {
     Boolean,
     Integer,
     Number,
     String,
     Object
 };
-constexpr const char* paramTypeToString(ParamType type) {
+constexpr const char* paramTypeToString(APIParamType type) {
     switch(type) {
-        case ParamType::Boolean: return "boolean";
-        case ParamType::Integer: return "integer";
-        case ParamType::Number: return "number";
-        case ParamType::String: return "string";
-        case ParamType::Object: return "object";
+        case APIParamType::Boolean: return "boolean";
+        case APIParamType::Integer: return "integer";
+        case APIParamType::Number: return "number";
+        case APIParamType::String: return "string";
+        case APIParamType::Object: return "object";
     }
     return ""; // Pour satisfaire le compilateur
 }
+
+
+
+
+//##############################################################################
+//                             API builder
+//##############################################################################
 
 /**
  * @brief Parameters of an API method (request or response)
@@ -171,14 +143,17 @@ struct APIParam {
     std::vector<APIParam> properties;   // Stores nested objects (recursive)
 
     // Constructor to ease initialization
-    APIParam(const String& n, ParamType t, bool r = true) 
+    APIParam(const String& n, APIParamType t, bool r = true) 
         : name(n), type(paramTypeToString(t)), required(r) {}
 
     // Overloaded constructor for recursive nested objects
     APIParam(const String& n, const std::initializer_list<APIParam>& props, bool r = true)
-        : name(n), type(paramTypeToString(ParamType::Object)), required(r), properties(props) {}
+        : name(n), type(paramTypeToString(APIParamType::Object)), required(r), properties(props) {}
 };
 
+/**
+ * @brief API method data
+ */
 struct APIMethod {
     using Handler = std::function<bool(const JsonObject* args, JsonObject& response)>;
     
@@ -220,7 +195,7 @@ public:
     }
     
     // Add a simple parameter to the method
-    APIMethodBuilder& param(const String& name, ParamType type, bool required = true) {
+    APIMethodBuilder& param(const String& name, APIParamType type, bool required = true) {
         _method.requestParams.push_back(APIParam(name, type, required));
         return *this;
     }
@@ -232,7 +207,7 @@ public:
     }
     
     // Add a simple response parameter to the method
-    APIMethodBuilder& response(const String& name, ParamType type, bool required = true) {
+    APIMethodBuilder& response(const String& name, APIParamType type, bool required = true) {
         _method.responseParams.push_back(APIParam(name, type, required));
         return *this;
     }
@@ -266,13 +241,17 @@ private:
     APIMethod _method;  // Stores the method during construction
 };
 
+
+
+//##############################################################################
+//                             API server definition
+//##############################################################################
+
 /**
  * @brief Main API Server
  */
 class APIServer {
 public:
-    APIServer(const APIInfo& info) : _apiInfo(info) {}
-    
     /**
      * @brief Initialize all endpoints
      */
@@ -293,27 +272,52 @@ public:
     }
 
     /**
-     * @brief Register an API module
-     * @param name The name of the module
-     * @param version The version of the module
-     * @param description The description of the module
+     * @brief Register the API metadata (from parameters)
+     * @param title The title of the API
+     * @param version The version of the API
+     * @param serverUrl The URL of the API server (optional, default to "/api")
      */
-    void registerModule(const String& name, const String& description) {
-        _modules[name] = {name, description, {}};
+    void registerAPIInfo(const String& title, const String& version, const String& serverUrl = "/api") {
+        _apiInfo.title = title;
+        _apiInfo.version = version;
+        _apiInfo.serverUrl = serverUrl;
+    }
+
+    /**
+     * @brief Register the API metadata (from a structure)
+     * @param apiInfo The API metadata structure
+     */
+    void registerAPIInfo(const APIInfo& apiInfo) {
+        _apiInfo = apiInfo;
+    }
+
+    /**
+     * @brief Register an API module metadata
+     * @param name The name of the module
+     * @param description The description of the module
+     * @param version The version of the module
+     */
+    void registerModuleInfo(const String& name, const String& description, const String& version = "") {
+        _modules[name] = {description, version};
     }
 
     /**
      * @brief Register a method to the API server
+     * @param module The name of the module
      * @param path The path of the method
      * @param method The method to register
      */
     void registerMethod(const String& module, const String& path, const APIMethod& method) {
+        // Register the method
         _methods[path] = method;
 
-        if (_modules.find(module) != _modules.end()) {
-            _modules[module].routes.push_back(path);
+        // Add the route to module metadata
+        auto it = _modules.find(module);
+        if (it != _modules.end()) {
+            it->second.routes.push_back(path);
         }
 
+        // Add protocol exclusions
         if (!method.exclusions.empty()) {
             for (const auto& excl : method.exclusions) {
                 _excludedPathsByProtocol[excl].push_back(path);
@@ -473,6 +477,22 @@ public:
     }
 
     /**
+     * @brief Get the modules registered in the API server
+     * @return The modules
+     */
+    const std::map<String, APIModuleInfo>& getModules() const {
+        return _modules;
+    }
+
+    /**
+     * @brief Get the API metadata
+     * @return The API metadata
+     */
+    const APIInfo& getApiInfo() const {
+        return _apiInfo;
+    }
+
+    /**
      * @brief Validate the parameters of a method
      * @param method The method called
      * @param args The arguments of incoming request
@@ -509,11 +529,73 @@ public:
         return _apiInfo;
     }
 
+    /**
+     * @brief Generate OpenAPI documentation and save it to filesystem
+     * @param fs The filesystem to use (SPIFFS or LittleFS)
+     * @return True if successful, false otherwise
+     */
+    bool generateAndSaveOpenAPIDoc(fs::FS& fs) {
+        // Créer un document JSON temporaire avec allocation statique
+        StaticJsonDocument<16384> doc;  // Ajuster la taille selon vos besoins
+        
+        // Ajouter les champs obligatoires OpenAPI
+        doc["openapi"] = "3.1.0";
+        
+        // Info object
+        JsonObject info = doc.createNestedObject("info");
+        info["title"] = _apiInfo.title;
+        info["version"] = _apiInfo.version;
+        if (_apiInfo.description.length() > 0) info["description"] = _apiInfo.description;
+        if (_apiInfo.license.length() > 0) info["license"]["name"] = _apiInfo.license;
+        if (_apiInfo.contact.name.length() > 0) {
+            JsonObject contact = info.createNestedObject("contact");
+            contact["name"] = _apiInfo.contact.name;
+            if (_apiInfo.contact.email.length() > 0) contact["email"] = _apiInfo.contact.email;
+        }
+
+        // Servers
+        JsonArray servers = doc.createNestedArray("servers");
+        JsonObject server = servers.createNestedObject();
+        server["url"] = _apiInfo.serverUrl;
+
+        // Paths
+        JsonObject paths = doc.createNestedObject("paths");
+        
+        // Parcourir les méthodes et les ajouter aux paths
+        for (const auto& [path, method] : _methods) {
+            JsonObject pathObj = paths.createNestedObject(path);
+            
+            switch(method.type) {
+                case APIMethodType::GET:
+                    addMethodToPath(pathObj, "get", method);
+                    break;
+                case APIMethodType::SET:
+                    addMethodToPath(pathObj, "post", method);
+                    break;
+                case APIMethodType::EVT:
+                    // Les événements sont gérés différemment
+                    break;
+            }
+        }
+
+        // Sauvegarder en JSON
+        if (!saveJsonToFile(fs, "/openapi.json", doc)) {
+            return false;
+        }
+
+        // Sauvegarder en YAML 
+        if (!saveYamlToFile(fs, "/openapi.yaml", doc)) {
+            return false;
+        }
+
+        return true;
+    }
+
 private:
     APIInfo _apiInfo;                              // Metadata about the API
-    std::map<String, APIModuleInfo> _modules;      // Metadata about API modules
+    std::map<String, APIModuleInfo> _modules;      // API module metadata (includes list of routes)
+    std::map<String, APIMethod> _methods;          // Registered methods by path
     std::vector<APIEndpoint*> _endpoints;          // Objects implementing APIEndpoint
-    std::map<String, APIMethod> _methods;          // Registered methods (path/APIMethod map)
     std::map<String, std::vector<String>> _excludedPathsByProtocol; // Excluded paths by protocol
 
     static String toString(APIMethodType type) {
@@ -523,6 +605,91 @@ private:
             case APIMethodType::EVT: return "EVT";
             default: return "UNKNOWN";
         }
+    }
+
+    void addMethodToPath(JsonObject& pathObj, const char* method, const APIMethod& apiMethod) {
+        JsonObject methodObj = pathObj.createNestedObject(method);
+        
+        if (apiMethod.description.length() > 0) {
+            methodObj["description"] = apiMethod.description;
+        }
+
+        // Paramètres
+        if (!apiMethod.requestParams.empty()) {
+            JsonArray parameters = methodObj.createNestedArray("parameters");
+            for (const auto& param : apiMethod.requestParams) {
+                JsonObject paramObj = parameters.createNestedObject();
+                addParamToDoc(paramObj, param);
+            }
+        }
+
+        // Réponses
+        JsonObject responses = methodObj.createNestedObject("responses");
+        JsonObject response200 = responses.createNestedObject("200");
+        response200["description"] = "Successful operation";
+        
+        if (!apiMethod.responseParams.empty()) {
+            JsonObject content = response200.createNestedObject("content");
+            JsonObject jsonContent = content.createNestedObject("application/json");
+            JsonObject schema = jsonContent.createNestedObject("schema");
+            addResponseSchemaToDoc(schema, apiMethod.responseParams);
+        }
+    }
+
+    void addParamToDoc(JsonObject& paramObj, const APIParam& param) {
+        paramObj["name"] = param.name;
+        paramObj["in"] = "query";  // Par défaut
+        paramObj["required"] = param.required;
+        
+        JsonObject schema = paramObj.createNestedObject("schema");
+        schema["type"] = param.type;
+        
+        if (!param.properties.empty()) {
+            JsonObject props = schema.createNestedObject("properties");
+            for (const auto& prop : param.properties) {
+                JsonObject propObj = props.createNestedObject(prop.name);
+                propObj["type"] = prop.type;
+            }
+        }
+    }
+
+    void addResponseSchemaToDoc(JsonObject& schema, const std::vector<APIParam>& params) {
+        schema["type"] = "object";
+        
+        if (!params.empty()) {
+            JsonObject properties = schema.createNestedObject("properties");
+            for (const auto& param : params) {
+                JsonObject prop = properties.createNestedObject(param.name);
+                prop["type"] = param.type;
+                
+                if (!param.properties.empty()) {
+                    JsonObject subProps = prop.createNestedObject("properties");
+                    for (const auto& subProp : param.properties) {
+                        JsonObject subPropObj = subProps.createNestedObject(subProp.name);
+                        subPropObj["type"] = subProp.type;
+                    }
+                }
+            }
+        }
+    }
+
+    bool saveJsonToFile(fs::FS& fs, const char* path, const JsonDocument& doc) {
+        fs::File file = fs.open(path, "w");
+        if (!file) return false;
+        
+        serializeJson(doc, file);
+        file.close();
+        return true;
+    }
+
+    bool saveYamlToFile(fs::FS& fs, const char* path, const JsonDocument& doc) {
+        fs::File file = fs.open(path, "w");
+        if (!file) return false;
+        
+        // Convertir JSON en YAML (version simplifiée)
+        serializeJson(doc, file); // Pour l'instant on sauve en JSON, à améliorer
+        file.close();
+        return true;
     }
 };
 

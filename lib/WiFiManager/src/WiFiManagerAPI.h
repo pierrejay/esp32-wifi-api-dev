@@ -44,16 +44,22 @@ private:
     static constexpr unsigned long NOTIFICATION_INTERVAL = 500;
     static constexpr unsigned long HEARTBEAT_INTERVAL = 5000;
 
+
+
     /**
      * @brief Register the methods to the API server
      */
     void registerMethods() const {
 
-        // Register API Module metadata (allows to group methods by tags in the documentation)
-        const String APIMODULE_NAME = "wifi"; // API Module name (must be consistent with module name in registerMethod calls)
-        _apiServer.registerModule(
-            APIMODULE_NAME,                    // name
-            "WiFi configuration and monitoring"     // description
+        //@API_DOC_SECTION_START
+        // API Module name (must be consistent between module info & registerMethod calls)
+        const String APIMODULE_NAME = "wifi"; 
+       
+       // Register API Module metadata (allows to group methods by tags in the documentation)
+        _apiServer.registerModuleInfo(
+            APIMODULE_NAME,                                 // Name
+            "WiFi configuration and monitoring",     // Description
+            "1.0.0"                                      // Version
         );
 
         // GET wifi/status
@@ -70,17 +76,17 @@ private:
             })
             .desc("Get WiFi status")
             .response("ap", {
-                {"enabled", ParamType::Boolean},
-                {"connected", ParamType::Boolean},
-                {"clients", ParamType::Integer},
-                {"ip", ParamType::String},
-                {"rssi", ParamType::Integer}
+                {"enabled", APIParamType::Boolean},
+                {"connected", APIParamType::Boolean},
+                {"clients", APIParamType::Integer},
+                {"ip", APIParamType::String},
+                {"rssi", APIParamType::Integer}
             })
             .response("sta", {
-                {"enabled", ParamType::Boolean},
-                {"connected", ParamType::Boolean},
-                {"ip", ParamType::String},
-                {"rssi", ParamType::Integer}
+                {"enabled", APIParamType::Boolean},
+                {"connected", APIParamType::Boolean},
+                {"ip", APIParamType::String},
+                {"rssi", APIParamType::Integer}
             })
             .build()
         );
@@ -99,22 +105,22 @@ private:
             })
             .desc("Get WiFi configuration")
             .response("ap", {
-                {"enabled",     ParamType::Boolean},
-                {"ssid",        ParamType::String},
-                {"password",    ParamType::String},
-                {"channel",     ParamType::Integer},
-                {"ip",          ParamType::String},
-                {"gateway",     ParamType::String},
-                {"subnet",      ParamType::String}
+                {"enabled",     APIParamType::Boolean},
+                {"ssid",        APIParamType::String},
+                {"password",    APIParamType::String},
+                {"channel",     APIParamType::Integer},
+                {"ip",          APIParamType::String},
+                {"gateway",     APIParamType::String},
+                {"subnet",      APIParamType::String}
             })
             .response("sta", {
-                {"enabled",     ParamType::Boolean},
-                {"ssid",        ParamType::String},
-                {"password",    ParamType::String},
-                {"dhcp",        ParamType::Boolean},
-                {"ip",          ParamType::String},
-                {"gateway",     ParamType::String},
-                {"subnet",      ParamType::String}
+                {"enabled",     APIParamType::Boolean},
+                {"ssid",        APIParamType::String},
+                {"password",    APIParamType::String},
+                {"dhcp",        APIParamType::Boolean},
+                {"ip",          APIParamType::String},
+                {"gateway",     APIParamType::String},
+                {"subnet",      APIParamType::String}
             })
             .build()
         );
@@ -133,9 +139,9 @@ private:
             })
             .desc("Scan available WiFi networks")
             .response("networks", {
-                {"ssid",        ParamType::String},
-                {"rssi",        ParamType::Integer},
-                {"encryption",  ParamType::Integer}
+                {"ssid",        APIParamType::String},
+                {"rssi",        APIParamType::Integer},
+                {"encryption",  APIParamType::Integer}
             })
             .build()
         );
@@ -148,14 +154,14 @@ private:
                 return true;
             })
             .desc("Configure Access Point")
-            .param("enabled",   ParamType::Boolean)
-            .param("ssid",      ParamType::String)
-            .param("password",  ParamType::String)
-            .param("channel",   ParamType::Integer)
-            .param("ip",        ParamType::String, false)  // Optional
-            .param("gateway",   ParamType::String, false)  // Optional
-            .param("subnet",    ParamType::String, false)  // Optional
-            .response("success",ParamType::Boolean)
+            .param("enabled",   APIParamType::Boolean)
+            .param("ssid",      APIParamType::String)
+            .param("password",  APIParamType::String)
+            .param("channel",   APIParamType::Integer)
+            .param("ip",        APIParamType::String, false)  // Optional
+            .param("gateway",   APIParamType::String, false)  // Optional
+            .param("subnet",    APIParamType::String, false)  // Optional
+            .response("success",APIParamType::Boolean)
             .build()
         );
 
@@ -167,14 +173,14 @@ private:
                 return true;
             })
             .desc("Configure Station mode")
-            .param("enabled",   ParamType::Boolean)
-            .param("ssid",      ParamType::String)
-            .param("password",  ParamType::String)
-            .param("dhcp",      ParamType::Boolean)
-            .param("ip",        ParamType::String, false)  // Optional
-            .param("gateway",   ParamType::String, false)  // Optional
-            .param("subnet",    ParamType::String, false)  // Optional
-            .response("success",ParamType::Boolean)
+            .param("enabled",   APIParamType::Boolean)
+            .param("ssid",      APIParamType::String)
+            .param("password",  APIParamType::String)
+            .param("dhcp",      APIParamType::Boolean)
+            .param("ip",        APIParamType::String, false)  // Optional
+            .param("gateway",   APIParamType::String, false)  // Optional
+            .param("subnet",    APIParamType::String, false)  // Optional
+            .response("success",APIParamType::Boolean)
             .build()
         );
 
@@ -189,8 +195,8 @@ private:
                 return true;
             })
             .desc("Set device hostname")
-            .param("hostname",        ParamType::String)
-            .response("success", ParamType::Boolean)
+            .param("hostname",        APIParamType::String)
+            .response("success", APIParamType::Boolean)
             .build()
         );
 
@@ -200,42 +206,45 @@ private:
             .desc("WiFi status and configuration updates")
             .response("status", {
                 {"ap", {
-                    {"enabled",     ParamType::Boolean},
-                    {"connected",   ParamType::Boolean},
-                    {"clients",     ParamType::Integer},
-                    {"ip",          ParamType::String},
-                    {"rssi",        ParamType::Integer}
+                    {"enabled",     APIParamType::Boolean},
+                    {"connected",   APIParamType::Boolean},
+                    {"clients",     APIParamType::Integer},
+                    {"ip",          APIParamType::String},
+                    {"rssi",        APIParamType::Integer}
                 }},
                 {"sta", {
-                    {"enabled",     ParamType::Boolean},
-                    {"connected",   ParamType::Boolean},
-                    {"ip",          ParamType::String},
-                    {"rssi",        ParamType::Integer}
+                    {"enabled",     APIParamType::Boolean},
+                    {"connected",   APIParamType::Boolean},
+                    {"ip",          APIParamType::String},
+                    {"rssi",        APIParamType::Integer}
                 }}
             })
             .response("config", {
                 {"ap", {
-                    {"enabled",     ParamType::Boolean},
-                    {"ssid",        ParamType::String},
-                    {"password",    ParamType::String},
-                    {"channel",     ParamType::Integer},
-                    {"ip",          ParamType::String},
-                    {"gateway",     ParamType::String},
-                    {"subnet",      ParamType::String}
+                    {"enabled",     APIParamType::Boolean},
+                    {"ssid",        APIParamType::String},
+                    {"password",    APIParamType::String},
+                    {"channel",     APIParamType::Integer},
+                    {"ip",          APIParamType::String},
+                    {"gateway",     APIParamType::String},
+                    {"subnet",      APIParamType::String}
                 }},
             {"sta", {
-                    {"enabled",     ParamType::Boolean},
-                    {"ssid",        ParamType::String},
-                    {"password",    ParamType::String},
-                    {"dhcp",        ParamType::Boolean},
-                    {"ip",          ParamType::String},
-                    {"gateway",     ParamType::String},
-                    {"subnet",      ParamType::String}
+                    {"enabled",     APIParamType::Boolean},
+                    {"ssid",        APIParamType::String},
+                    {"password",    APIParamType::String},
+                    {"dhcp",        APIParamType::Boolean},
+                    {"ip",          APIParamType::String},
+                    {"gateway",     APIParamType::String},
+                    {"subnet",      APIParamType::String}
                 }}
             })
             .build()
         );
+        //@API_DOC_SECTION_END
     }
+
+
 
     /**
      * @brief Send a notification to the API server
