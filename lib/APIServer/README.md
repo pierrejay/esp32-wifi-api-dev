@@ -156,7 +156,7 @@ wifimanager_app/
 
 Initialization consists of creating stack objects (globals), passing the server to the application API and endpoint, and declaring the methods to use.
 
-Global API server metadata is specified at initialization (used for documentation). You can add some more before calling `begin()`. Then, each application API can register its metadata (`registerModule()`) and methods (`registerMethod()`) to the APIServer. See the appropriate sections below for more details on API metadata.
+Global API server metadata is specified during the initialization process before calling `begin()`.Each application API can register its metadata (`registerModule()`) and methods (`registerMethod()`) in the implementation file. See the appropriate sections below for more details on API metadata.
 
 #### Main Application Setup: main.cpp
 ```cpp
@@ -179,8 +179,10 @@ void setup() {
     apiInfo.serverUrl = "http://esp32.local/api";
     apiServer.registerAPIInfo(apiInfo);
 
+    // Declare API endpoints (HTTP, MQTT, Serial...)
     apiServer.addEndpoint(&webServer);
     
+    // Initialize business logic applications
     if (!wifiManager.begin()) {
        Serial.println("WiFiManager initialization error");
        while(1) {
@@ -188,7 +190,8 @@ void setup() {
        }
      }
      
-     apiServer.begin(); 
+    // Start API Server 
+    apiServer.begin(); 
 }
 
 void loop() {
@@ -207,15 +210,17 @@ void loop() {
 
     const String APIMODULE_NAME = "wifi";   // API Module name
 
-    // Register API Module metadata
+    // 1. Register API Module metadata
     _apiServer.registerModuleInfo(
         APIMODULE_NAME,                     // name
         "WiFi configuration and monitoring", // description
         "1.0.0"                              // version
     );
 
+    // 2. Declare API Methods indivdually
+
     // GET wifi/scan
-    _apiServer.registerMethod("wifi/scan",
+    _apiServer.registerMethod(APIMODULE_NAME, "wifi/scan",
         APIMethodBuilder(APIMethodType::GET, [this](const JsonObject* args, JsonObject& response) {
             _wifiManager.getAvailableNetworks(response);
             return true;
@@ -230,7 +235,7 @@ void loop() {
     );
     
     // SET wifi/ap/config
-    _apiServer.registerMethod("wifi/ap/config",
+    _apiServer.registerMethod(APIMODULE_NAME, "wifi/ap/config",
         APIMethodBuilder(APIMethodType::SET, [this](const JsonObject* args, JsonObject& response) {
             bool success = _wifiManager.setAPConfigFromJson(*args);
             response["success"] = success;
@@ -269,13 +274,20 @@ All endpoints automatically expose the full API and handle client requests auton
 
 ### Register Methods
 
+The `registerMethod` function is used to declare all API methods and takes 3 arguments:
+- Module name (String)
+- Method path (String)
+- APIMethodBuilder object : used to declare method type, parameters, response, etc.
+
+The user can freely define a path that does not include the module name, the APIServer does not enforce proper hierarchy in the path, though it is strongly recommended to follow a consistent and well-structured naming convention.
+
 #### GET Methods
 - Read-only operations
 - No required request parameters
 - Always return a response object
 
 ```cpp
-apiServer.registerMethod("wifi/status",
+apiServer.registerMethod("wifi", "wifi/status",
     APIMethodBuilder(APIMethodType::GET, handler)
         .desc("Get WiFi status")
         .response("status", APIParamType::Object)
@@ -289,7 +301,7 @@ apiServer.registerMethod("wifi/status",
 - Returns at least a success/failure response
 
 ```cpp
-apiServer.registerMethod("wifi/sta/config",
+apiServer.registerMethod("wifi", "wifi/sta/config",
     APIMethodBuilder(APIMethodType::SET, handler)
         .desc("Configure Station mode")
         .param("ssid", APIParamType::String)
@@ -305,7 +317,7 @@ apiServer.registerMethod("wifi/sta/config",
 - One-way communication (server to client)
 
 ```cpp
-apiServer.registerMethod("wifi/events",
+apiServer.registerMethod("wifi", "wifi/events",
     APIMethodBuilder(APIMethodType::EVT)
         .desc("WiFi status updates")
         .response("status", APIParamType::Object)
@@ -314,7 +326,9 @@ apiServer.registerMethod("wifi/events",
 ```
 
 ##### Broadcasting Events
-Unlike other methods, events are not handled automatically upon client request, they must be called by the application API (for example to signal a status change to all connected clients).
+Unlike other methods, events are not handled automatically upon client request, they must be called by the application API (for example to signal a status change to all connected clients) with the `broadcast` method.
+
+Similar to route registration, a call to `broadcast` does not enforce using the proper path. It is the responsibility of the user to ensure that a consistent path is used across event method registration & calls to `broadcast`. This choice allows a maximal flexibility in designing the API as desired by end users.
 
 There are several approaches to handle state changes:
 
@@ -390,6 +404,23 @@ The Observer pattern via callbacks provides an efficient way to handle state cha
 >
 > Consider a full Observer pattern only if you need additional flexibility.
 
+Basically, an event will be passed to endpoints as two fields:
+- `event` : the event name (`String`)
+- `data` : the event data (`JsonObject`)
+
+```cpp
+// Example of an event
+{
+    "event": "wifi/events",
+    "data": {
+        "status": { 
+            "ap": "connected",
+            "sta": "disconnected"
+        }
+    }
+}
+```
+
 ### Nested Objects
 The library supports nested objects at any depth level through recursive implementation.
 
@@ -411,7 +442,7 @@ The library supports nested objects at any depth level through recursive impleme
 Methods can be configured to exclude specific protocols. This is useful when certain operations should not be available through specific communication channels (for security or technical reasons).
 ```cpp
 // Exclude a single protocol
-apiServer.registerMethod("wifi/password",
+apiServer.registerMethod("wifi", "wifi/password",
     APIMethodBuilder(APIMethodType::GET, handler)
         .desc("Get WiFi password")
         .response("password", "string")
@@ -420,7 +451,7 @@ apiServer.registerMethod("wifi/password",
 );
 
 // Exclude multiple protocols
-apiServer.registerMethod("system/reset",
+apiServer.registerMethod("system", "system/reset",
     APIMethodBuilder(APIMethodType::SET, handler)
         .desc("Reset system")
         .param("delay", "int")
@@ -435,7 +466,7 @@ The exclusions are:
 - Applied at the protocol level (excluded methods are not visible to clients)
 
 ### Naming Patterns tips
-- Use hierarchical paths: `component/resource`
+- Use hierarchical paths consistent with API modules: `component/resource`
 - Use plural for collections: `clients/list`
 - Include action in path: `wifi/scan`
 - Clear & direct methods possible: `get_wifi_status`
@@ -444,7 +475,7 @@ The exclusions are:
 
 ### Simplified Documentation
 
-The library automatically generates a comprehensive, simplified API documentation in JSON format. This documentation is available through the `/api` endpoint (dynamically generated) and provides a complete description of all available methods, their expected parameters (required/optional), and response structures.
+The library automatically generates a comprehensive, simplified API documentation in JSON format. This dynamically-generated documentation is available at the root (e.g. `GET /api` for HTTP API). It provides a complete description of all available methods, their expected parameters (required/optional), and response structures.
 
 #### Example Generated Simplified Documentation
 ```json
@@ -496,17 +527,17 @@ The library automatically generates a comprehensive, simplified API documentatio
   }]
 }
 ```
+Optional request & response parameters are marked with a `*` suffix.
 
 ### OpenAPI Documentation
-The library automaticallygenerates OpenAPI 3.1.1 documentation in both JSON and YAML formats:
+The library can generate a fully compliant OpenAPI 3.1.1 documentation in JSON format.
 
-1. Documentation files are generated at compile time and stored in the `/data` directory:
+1. Documentation file is generated at compile time and stored in the `/data` directory:
    - `/data/openapi.json`
-   - `/data/openapi.yaml`
 
-2. Files are served statically at runtime:
-   - `http://device.local/api/openapi.json`
-   - `http://device.local/api/openapi.yaml`
+2. File is served statically at runtime: 
+   - `http://device.local/api/openapi.json` for the HTTP API
+(should be implemented in Endpoints implementation for custom protocols)
 
 This approach:
 - Preserves ESP32 resources (no runtime generation, data stored in flash)
@@ -588,6 +619,22 @@ _apiServer.registerModuleInfo(
 The module metadata helps organize the API documentation by grouping related methods together using the `tags` field. Each module's routes list is automatically maintained by the API Server as methods are registered.
 
 > **Note:** The module name must be consistent between the `registerModuleInfo` call and the `registerMethod` calls. This is not enforced at runtime in order to keep the API server as user-friendly as possible, but it will lead to incorrect documentation if not respected.
+
+#### Dynamic generation at runtime
+
+An optional method is supported to dynamically generate the OpenAPI documentation at runtime. It is implemented in the `APIDocGenerator` class.
+
+```cpp
+JsonDocument doc;
+JsonObject root = doc.to<JsonObject>();
+if (APIDocGenerator::generateOpenAPIDocJson(apiServer, root, SPIFFS)) {
+    Serial.println("OpenAPI documentation generated successfully");
+} else {
+    Serial.println("Error generating OpenAPI documentation");
+}
+```
+
+Be careful with this feature as the memory footprint can be significant - a typical OpenAPI document requires more than 2 KB of memory per path description. It is intended to be used in special situations where this solution is preferred to the static generation at compile time.
 
 ## Available Implementations
 

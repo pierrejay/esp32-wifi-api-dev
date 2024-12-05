@@ -529,67 +529,6 @@ public:
         return _apiInfo;
     }
 
-    /**
-     * @brief Generate OpenAPI documentation and save it to filesystem
-     * @param fs The filesystem to use (SPIFFS or LittleFS)
-     * @return True if successful, false otherwise
-     */
-    bool generateAndSaveOpenAPIDoc(fs::FS& fs) {
-        // Créer un document JSON temporaire avec allocation statique
-        StaticJsonDocument<16384> doc;  // Ajuster la taille selon vos besoins
-        
-        // Ajouter les champs obligatoires OpenAPI
-        doc["openapi"] = "3.1.0";
-        
-        // Info object
-        JsonObject info = doc.createNestedObject("info");
-        info["title"] = _apiInfo.title;
-        info["version"] = _apiInfo.version;
-        if (_apiInfo.description.length() > 0) info["description"] = _apiInfo.description;
-        if (_apiInfo.license.length() > 0) info["license"]["name"] = _apiInfo.license;
-        if (_apiInfo.contact.name.length() > 0) {
-            JsonObject contact = info.createNestedObject("contact");
-            contact["name"] = _apiInfo.contact.name;
-            if (_apiInfo.contact.email.length() > 0) contact["email"] = _apiInfo.contact.email;
-        }
-
-        // Servers
-        JsonArray servers = doc.createNestedArray("servers");
-        JsonObject server = servers.createNestedObject();
-        server["url"] = _apiInfo.serverUrl;
-
-        // Paths
-        JsonObject paths = doc.createNestedObject("paths");
-        
-        // Parcourir les méthodes et les ajouter aux paths
-        for (const auto& [path, method] : _methods) {
-            JsonObject pathObj = paths.createNestedObject(path);
-            
-            switch(method.type) {
-                case APIMethodType::GET:
-                    addMethodToPath(pathObj, "get", method);
-                    break;
-                case APIMethodType::SET:
-                    addMethodToPath(pathObj, "post", method);
-                    break;
-                case APIMethodType::EVT:
-                    // Les événements sont gérés différemment
-                    break;
-            }
-        }
-
-        // Sauvegarder en JSON
-        if (!saveJsonToFile(fs, "/openapi.json", doc)) {
-            return false;
-        }
-
-        // Sauvegarder en YAML 
-        if (!saveYamlToFile(fs, "/openapi.yaml", doc)) {
-            return false;
-        }
-
-        return true;
-    }
 
 private:
     APIInfo _apiInfo;                              // Metadata about the API
@@ -671,25 +610,6 @@ private:
                 }
             }
         }
-    }
-
-    bool saveJsonToFile(fs::FS& fs, const char* path, const JsonDocument& doc) {
-        fs::File file = fs.open(path, "w");
-        if (!file) return false;
-        
-        serializeJson(doc, file);
-        file.close();
-        return true;
-    }
-
-    bool saveYamlToFile(fs::FS& fs, const char* path, const JsonDocument& doc) {
-        fs::File file = fs.open(path, "w");
-        if (!file) return false;
-        
-        // Convertir JSON en YAML (version simplifiée)
-        serializeJson(doc, file); // Pour l'instant on sauve en JSON, à améliorer
-        file.close();
-        return true;
     }
 };
 

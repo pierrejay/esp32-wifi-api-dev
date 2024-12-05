@@ -7,7 +7,9 @@
 #include "SerialAPIEndpoint.h"
 #include "result.h"
 #include "SerialProxy.h"
-#include "api_doc.h"
+#include "APIDocGenerator.h"
+
+#define GENERATE_API_DOC 0  // Mettre à 0 pour désactiver
 
 // Proxy server for Serial port
 // #define Serial SerialAPIEndpoint::proxy
@@ -18,8 +20,6 @@ APIServer apiServer;                                        // APIServer instanc
 WiFiManagerAPI wifiManagerAPI(wifiManager, apiServer);      // WiFiManager API interface
 WebAPIEndpoint webServer(apiServer, 80);                    // Web server endpoint (HTTP+WS)
 // SerialAPIEndpoint serialAPI(apiServer);                  // Serial API endpoint
-
-#define GENERATE_API_DOC 1  // Mettre à 0 pour désactiver
 
 void setup() {
     Serial.begin(115200);
@@ -64,21 +64,22 @@ void setup() {
         }
     }
 
-#if GENERATE_API_DOC
-    // Générer la documentation OpenAPI
-    Serial.println("Generating OpenAPI documentation...");
-    if (apiServer.generateAndSaveOpenAPIDoc(SPIFFS)) {
-        Serial.println("OpenAPI documentation generated successfully");
-    } else {
-        Serial.println("Failed to generate OpenAPI documentation");
-    }
-#endif
-
     // Start the API server
     apiServer.begin(); 
 
     Serial.println("System initialized");
     digitalWrite(LED_BUILTIN, LOW);
+
+    // Generate the API documentation
+    if (GENERATE_API_DOC) {
+        JsonDocument doc;
+        JsonObject root = doc.to<JsonObject>();
+        if (APIDocGenerator::generateOpenAPIDocJson(apiServer, root, SPIFFS)) {
+            Serial.println("OpenAPI documentation generated successfully");
+        } else {
+            Serial.println("Error generating OpenAPI documentation");
+        }
+    }
 }
 
 void loop() {

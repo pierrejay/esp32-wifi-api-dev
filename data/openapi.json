@@ -1,15 +1,419 @@
 {
+  "openapi": "3.0.0",
   "info": {
-    "description": "",
-    "title": " API",
-    "version": ""
+    "title": "WiFiManager API",
+    "version": "1.0.0",
+    "description": "WiFi operations control for ESP32",
+    "license": {
+      "name": "MIT"
+    },
+    "contact": {
+      "name": "Pierre Jay",
+      "email": "pierre.jay@gmail.com"
+    }
   },
-  "openapi": "3.1.1",
-  "paths": {},
   "servers": [
     {
-      "url": "/"
+      "url": "http://esp32.local/api"
     }
   ],
-  "tags": []
+  "paths": {
+    "/wifi/ap/config": {
+      "post": {
+        "description": "Configure Access Point",
+        "tags": [
+          "wifi"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "ssid": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "channel": {
+                    "type": "integer"
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "gateway": {
+                    "type": "string"
+                  },
+                  "subnet": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "ssid",
+                  "password",
+                  "channel"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wifi/config": {
+      "get": {
+        "description": "Get WiFi configuration",
+        "tags": [
+          "wifi"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ap": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "ssid": {
+                          "type": "string"
+                        },
+                        "password": {
+                          "type": "string"
+                        },
+                        "channel": {
+                          "type": "integer"
+                        },
+                        "ip": {
+                          "type": "string"
+                        },
+                        "gateway": {
+                          "type": "string"
+                        },
+                        "subnet": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "ssid",
+                        "password",
+                        "channel",
+                        "ip",
+                        "gateway",
+                        "subnet"
+                      ]
+                    },
+                    "sta": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "ssid": {
+                          "type": "string"
+                        },
+                        "password": {
+                          "type": "string"
+                        },
+                        "dhcp": {
+                          "type": "boolean"
+                        },
+                        "ip": {
+                          "type": "string"
+                        },
+                        "gateway": {
+                          "type": "string"
+                        },
+                        "subnet": {
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "ssid",
+                        "password",
+                        "dhcp",
+                        "ip",
+                        "gateway",
+                        "subnet"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ap",
+                    "sta"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wifi/events": {},
+    "/wifi/hostname": {
+      "post": {
+        "description": "Set device hostname",
+        "tags": [
+          "wifi"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "hostname": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "hostname"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wifi/scan": {
+      "get": {
+        "description": "Scan available WiFi networks",
+        "tags": [
+          "wifi"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "networks": {
+                      "type": "object",
+                      "properties": {
+                        "ssid": {
+                          "type": "string"
+                        },
+                        "rssi": {
+                          "type": "integer"
+                        },
+                        "encryption": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "ssid",
+                        "rssi",
+                        "encryption"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "networks"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wifi/sta/config": {
+      "post": {
+        "description": "Configure Station mode",
+        "tags": [
+          "wifi"
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "enabled": {
+                    "type": "boolean"
+                  },
+                  "ssid": {
+                    "type": "string"
+                  },
+                  "password": {
+                    "type": "string"
+                  },
+                  "dhcp": {
+                    "type": "boolean"
+                  },
+                  "ip": {
+                    "type": "string"
+                  },
+                  "gateway": {
+                    "type": "string"
+                  },
+                  "subnet": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "enabled",
+                  "ssid",
+                  "password",
+                  "dhcp"
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "success": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": [
+                    "success"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/wifi/status": {
+      "get": {
+        "description": "Get WiFi status",
+        "tags": [
+          "wifi"
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful operation",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "ap": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "connected": {
+                          "type": "boolean"
+                        },
+                        "clients": {
+                          "type": "integer"
+                        },
+                        "ip": {
+                          "type": "string"
+                        },
+                        "rssi": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "connected",
+                        "clients",
+                        "ip",
+                        "rssi"
+                      ]
+                    },
+                    "sta": {
+                      "type": "object",
+                      "properties": {
+                        "enabled": {
+                          "type": "boolean"
+                        },
+                        "connected": {
+                          "type": "boolean"
+                        },
+                        "ip": {
+                          "type": "string"
+                        },
+                        "rssi": {
+                          "type": "integer"
+                        }
+                      },
+                      "required": [
+                        "enabled",
+                        "connected",
+                        "ip",
+                        "rssi"
+                      ]
+                    }
+                  },
+                  "required": [
+                    "ap",
+                    "sta"
+                  ]
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
 }
