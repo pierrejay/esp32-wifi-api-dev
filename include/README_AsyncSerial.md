@@ -1,6 +1,6 @@
 # AsyncSerial Library
 
-Thread-safe asynchronous serial communication library enabling multiple logical streams over a single physical UART, with support for both non-blocking and synchronous operations.
+Thread-safe asynchronous serial communication library enabling multiple logical streams over a single physical UART.
 
 ## Core Concept: Serial Proxies
 
@@ -33,16 +33,16 @@ Proxies can be configured for different use cases:
 SerialProxy debug({
     .rxBufferSize = 1024,    // Receive buffer
     .txBufferSize = 1024,    // Transmit buffer
-    .mode = TransmitMode::BEST_EFFORT,  // Non-blocking
-    .interMessageDelay = 5   // ms between messages
+    .interMessageDelay = 5,   // ms between messages
+    .txChunkSize = 64        // Send in chunks (0 = unlimited)
 });
 
 // Protocol proxy (e.g., Modbus)
 SerialProxy modbus({
-    .mode = TransmitMode::SYNCHRONOUS,  // Request-response
-    .rxRequestTimeout = 100,  // Time to respond
-    .txResponseTimeout = 50,  // Time to receive response
-    .chunkSize = 0           // Send complete messages
+    .rxBufferSize = 256,     // Protocol frame size
+    .txBufferSize = 256,     // Protocol frame size
+    .interMessageDelay = 10,  // More time between frames
+    .txChunkSize = 0         // Send complete frames
 });
 ```
 
@@ -114,22 +114,21 @@ ExistingLib lib(debug);  // Works transparently
 ```cpp
 // Debug proxy for logging
 SerialProxy debug({
-    .mode = TransmitMode::BEST_EFFORT,
+    .interMessageDelay = 5,
     .txBufferSize = 2048  // Large buffer for logs
 });
 
 // Modbus master proxy
 SerialProxy modbus({
-    .mode = TransmitMode::SYNCHRONOUS,
-    .rxRequestTimeout = 100,
-    .txResponseTimeout = 50,
-    .txBufferSize = 256   // Standard Modbus frame
+    .rxBufferSize = 256,     // Protocol frame size
+    .txBufferSize = 256,     // Protocol frame size
+    .interMessageDelay = 10,  // More time between frames
+    .txChunkSize = 0         // Send complete frames
 });
 
 // AT command proxy
 SerialProxy at({
-    .mode = TransmitMode::SYNCHRONOUS,
-    .rxRequestTimeout = 1000,  // Longer timeout for AT
+    .interMessageDelay = 1000,  // Longer timeout for AT
     .txBufferSize = 512
 });
 
@@ -186,36 +185,6 @@ void flush(SerialProxy* proxy) {
 - Response windows are guaranteed
 - Non-critical operations wait for high-priority exchanges
 
-### Communication Modes
-
-#### BEST_EFFORT Mode
-- Non-blocking operation
-- Immediate transmission attempt
-- Ideal for logs, debug output
-- No guaranteed delivery timing
-
-```cpp
-SerialProxyConfig debugConfig{
-    .mode = TransmitMode::BEST_EFFORT,
-    .interMessageDelay = 5
-};
-```
-
-#### SYNCHRONOUS Mode
-- Request-response pattern
-- Configurable timeouts:
-  - `txResponseTimeout`: How long to wait for response
-  - `rxRequestTimeout`: Time reserved for responding
-- Guaranteed response windows
-- Perfect for protocols like Modbus
-
-```cpp
-SerialProxyConfig modbusConfig{
-    .mode = TransmitMode::SYNCHRONOUS,
-    .rxRequestTimeout = 100,  // 100ms to respond
-    .txResponseTimeout = 50   // 50ms to receive response
-};
-```
 
 ### Implementation Details
 
@@ -248,7 +217,6 @@ The `flush()` operation:
 ### Debug Logger
 ```cpp
 SerialProxy debug({
-    .mode = TransmitMode::BEST_EFFORT,
     .interMessageDelay = 5
 });
 
@@ -259,7 +227,6 @@ debug.flush();                 // Wait for transmission
 ### Protocol Implementation
 ```cpp
 SerialProxy protocol({
-    .mode = TransmitMode::SYNCHRONOUS,
     .rxRequestTimeout = 100,
     .txResponseTimeout = 50
 });
@@ -270,9 +237,10 @@ protocol.readString();         // Gets response
 
 ## Best Practices
 
-1. **Mode Selection**
-   - Use BEST_EFFORT for non-critical data
-   - Use SYNCHRONOUS for protocols requiring responses
+1. **Choose the Right Operation Mode**
+   - Use write() for non-critical data (logs, debug, metrics)
+   - Use flush() when transmission guarantee is needed (protocols)
+   - Let the system handle backpressure naturally
 
 2. **Timeout Configuration**
    - Set realistic response timeouts

@@ -3,38 +3,31 @@
 
 #include <Arduino.h>
 #include <vector>
+#include <atomic>
+#include <functional>
 
 using Bytes = std::vector<uint8_t>;
 static constexpr size_t MAX_PROXIES = 8;
 
 // ============================== RingBuffer ==============================
-template<typename T>
+template<typename T, size_t SIZE>
 class RingBuffer {
 public:
-    explicit RingBuffer(size_t size) 
-        : _size(size)
-        , _buffer(new T[size])
-        , _readIndex(0)
-        , _writeIndex(0)
-        , _count(0) {}
+    RingBuffer() : _readIndex(0), _writeIndex(0), _count(0) {}
 
-    ~RingBuffer() {
-        delete[] _buffer;
-    }
-
-    bool write(T data) {
-        if (_count >= _size) return false;
+    bool write(const T& data) {
+        if (_count >= SIZE) return false;
         _buffer[_writeIndex] = data;
-        _writeIndex = (_writeIndex + 1) % _size;
+        _writeIndex = (_writeIndex + 1) % SIZE;
         _count++;
         return true;
     }
 
     bool write(const T* data, size_t length) {
-        if (_count + length > _size) return false;
+        if (_count + length > SIZE) return false;
         for (size_t i = 0; i < length; i++) {
             _buffer[_writeIndex] = data[i];
-            _writeIndex = (_writeIndex + 1) % _size;
+            _writeIndex = (_writeIndex + 1) % SIZE;
         }
         _count += length;
         return true;
@@ -43,7 +36,7 @@ public:
     bool read(T& data) {
         if (_count == 0) return false;
         data = _buffer[_readIndex];
-        _readIndex = (_readIndex + 1) % _size;
+        _readIndex = (_readIndex + 1) % SIZE;
         _count--;
         return true;
     }
@@ -58,227 +51,254 @@ public:
     void clear() { _readIndex = _writeIndex = _count = 0; }
 
 private:
-    const size_t _size;
-    T* const _buffer;
+    T _buffer[SIZE];
     size_t _readIndex;
     size_t _writeIndex;
     size_t _count;
 };
 
-// ============================== SerialProxy ==============================
-struct SerialProxyConfig {
-    size_t rxBufferSize = 1024;    
-    size_t txBufferSize = 1024;    
-    AsyncSerial::TransmitMode mode = AsyncSerial::TransmitMode::BEST_EFFORT;
-    uint32_t chunkSize = 32;
-    uint32_t timeout = 100;
-    uint32_t interMessageDelay = 5;
+// ============================== SerialProxyBase ==============================
+class SerialProxyBase : public Stream {
+public:
+    virtual ~SerialProxyBase() = default;
+    virtual uint32_t getInterMessageDelay() const = 0;
+    virtual bool pushToRx(uint8_t data) = 0;
+    virtual bool readFromTx(uint8_t& data) = 0;
+    virtual size_t txAvailable() const = 0;
 };
 
-class SerialProxy : public Stream {
+// ============================== SerialProxy ==============================
+template<size_t BUFFER_SIZE = 1024>
+class SerialProxy : public SerialProxyBase {
 public:
-    explicit SerialProxy(const SerialProxyConfig& config = SerialProxyConfig{})
-        : _rxBuffer(config.rxBufferSize)
-        , _txBuffer(config.txBufferSize)
-        , _config(config) {}
+    explicit SerialProxy(uint32_t interMessageDelay = 5)
+        : _rxBuffer(), _txBuffer(), _interMessageDelay(interMessageDelay) {}
 
-    const SerialProxyConfig& getConfig() const { return _config; }
+    uint32_t getInterMessageDelay() const override { return _interMessageDelay; }
+    bool pushToRx(uint8_t data) override { return _rxBuffer.write(data); }
+    bool readFromTx(uint8_t& data) override { return _txBuffer.read(data); }
+    size_t txAvailable() const override { return _txBuffer.available(); }
 
-    // Stream interface
     int available() override { return _rxBuffer.available(); }
-    
     int read() override {
         uint8_t data;
         return _rxBuffer.read(data) ? data : -1;
     }
-    
     int peek() override {
         uint8_t data;
         return _rxBuffer.peek(data) ? data : -1;
     }
+    size_t write(uint8_t data) override { return _txBuffer.write(data) ? 1 : 0; }
 
-    size_t write(uint8_t data) override {
-        return _txBuffer.write(data) ? 1 : 0;
-    }
+    bool write(const Bytes& data) { return _txBuffer.write(data.data(), data.size()); }
+    bool write(const String& data) { return _txBuffer.write((const uint8_t*)data.c_str(), data.length()); }
 
-    // Block write methods
-    bool write(const Bytes& data) {
-        return _txBuffer.write(data.data(), data.size());
-    }
-    
-    bool write(const String& data) {
-        return _txBuffer.write((const uint8_t*)data.c_str(), data.length());
-    }
-
-    void flush() override {}
-
-    // Interface for AsyncSerial
-    bool pushToRx(uint8_t data) { return _rxBuffer.write(data); }
-    bool readFromTx(uint8_t& data) { return _txBuffer.read(data); }
-    size_t txAvailable() const { return _txBuffer.available(); }
+    void flush() override { AsyncSerial::getInstance().flush(this); }
 
 private:
-    RingBuffer<uint8_t> _rxBuffer;  // AsyncSerial -> Application
-    RingBuffer<uint8_t> _txBuffer;  // Application -> AsyncSerial
-    SerialProxyConfig _config;
+    RingBuffer<uint8_t, BUFFER_SIZE> _rxBuffer;
+    RingBuffer<uint8_t, BUFFER_SIZE> _txBuffer;
+    const uint32_t _interMessageDelay;
+};
+
+// ============================== CooperativeLock ==============================
+template<typename T>
+class CooperativeLock {
+public:
+    using PollCallback = std::function<void()>;
+
+    CooperativeLock() : _owner(nullptr) {}
+
+    bool acquire(T* owner, PollCallback poll) {
+        T* expected = nullptr;
+        while (!_owner.compare_exchange_weak(expected, owner)) {
+            expected = nullptr;
+            poll();
+        }
+        return true;
+    }
+
+    void release(T* owner) {
+        T* expected = owner;
+        _owner.compare_exchange_strong(expected, nullptr);
+    }
+
+    bool isOwnedBy(T* owner) const { return _owner.load() == owner; }
+    T* getOwner() const { return _owner.load(); }
+
+private:
+    std::atomic<T*> _owner;
 };
 
 // ============================== AsyncSerial ==============================
 class AsyncSerial {
 public:
-    enum class TransmitMode {
-        BEST_EFFORT,
-        SYNCHRONOUS
-    };
+    static AsyncSerial& getInstance() {
+        static AsyncSerial instance;
+        return instance;
+    }
 
-    struct SerialProxyConfig {
-        size_t rxBufferSize = 1024;    
-        size_t txBufferSize = 1024;    
-        TransmitMode mode = TransmitMode::BEST_EFFORT;
-        uint32_t chunkSize = 0;        // 0 = send entire buffer
-        uint32_t txResponseTimeout = 100; // Temps d'attente pour recevoir une réponse
-        uint32_t rxRequestTimeout = 100;  // Temps réservé pour répondre à une requête
-        uint32_t interMessageDelay = 5;
-    };
+    bool registerProxy(SerialProxyBase* proxy) {
+        if (_proxyCount >= MAX_PROXIES) return false;
+        _proxies[_proxyCount++] = {proxy, 0, false};
+        return true;
+    }
 
-private:
-    enum class State {
-        IDLE,
-        READ,
-        WRITE,
-        FLUSH    // Nouvel état pour le flush bloquant
-    };
+   bool flush(SerialProxyBase* proxy) {
+        // Prendre immédiatement le lock
+        _flushLock.acquire(proxy, [this]() { poll(); });
 
-    struct ProxyState {
-        SerialProxy* proxy;
-        SerialProxyConfig config;
-        unsigned long lastTxTime;
-        unsigned long lastRxTime;
-        bool isWaitingResponse;   // En attente d'une réponse
-        bool isProcessingRequest; // En train de traiter une requête
-    };
+        // Attendre que l'état WRITE termine
+        while (_state == State::WRITE) {
+            poll();  // Continue de traiter l'état WRITE jusqu'à ce qu'il se termine
+        }
 
-    State _state = State::IDLE;
-    ProxyState _proxies[MAX_PROXIES];
-    size_t _proxyCount = 0;
-    SerialProxy* _flushingProxy = nullptr;  // Proxy qui a demandé le flush
+        // Passe au mode FLUSH
+        _state = State::FLUSH;
 
-public:
+        // Bloque jusqu'à ce que le mode FLUSH soit terminé ou un timeout survienne
+        unsigned long startTime = millis();
+        while (_state == State::FLUSH) {
+            poll();
+            if (millis() - startTime >= SERIAL_TIMEOUT) {
+                Serial.println("FLUSH timeout: Operation failed.");
+                _flushLock.release(proxy);
+                return false;  // Indique l'échec du flush
+            }
+        }
+
+        // Libérer le lock après le flush
+        _flushLock.release(proxy);
+        return true;  // Flush réussi
+    }
+
     void poll() {
         unsigned long now = millis();
 
         switch (_state) {
             case State::IDLE:
+                // Transition vers READ si des données série sont disponibles
                 if (Serial.available()) {
                     _state = State::READ;
-                } else {
+                }
+                // Transition vers WRITE si un proxy a des données prêtes
+                else {
                     for (size_t i = 0; i < _proxyCount; i++) {
                         if (_proxies[i].proxy->txAvailable() > 0) {
+                            _proxies[i].isActive = true;  // Active ce proxy
                             _state = State::WRITE;
                             break;
                         }
                     }
+                    if (_state == State::IDLE) delay(1);  // Libère le CPU si aucun proxy actif
                 }
                 break;
 
-            case State::READ:
-                while (Serial.available()) {
+            case State::READ: {
+                size_t bytesRead = 0;
+                while (Serial.available() && bytesRead < RX_CHUNK_SIZE) {
                     uint8_t data = Serial.read();
                     for (size_t i = 0; i < _proxyCount; i++) {
-                        auto& state = _proxies[i];
-                        state.proxy->pushToRx(data);
-                        
-                        if (state.config.mode == TransmitMode::SYNCHRONOUS) {
-                            state.lastRxTime = now;
-                            state.isProcessingRequest = true;  // Démarre le timer de réponse
-                        }
+                        _proxies[i].proxy->pushToRx(data);
                     }
+                    bytesRead++;
                 }
-                _state = State::IDLE;
+                _state = Serial.available() ? State::READ : State::IDLE;
                 break;
+            }
 
             case State::WRITE:
                 for (size_t i = 0; i < _proxyCount; i++) {
                     auto& state = _proxies[i];
-                    
-                    // 1. Vérifier si un proxy est en train de traiter une requête
-                    if (state.config.mode == TransmitMode::SYNCHRONOUS && state.isProcessingRequest) {
-                        if (now - state.lastRxTime <= state.config.rxRequestTimeout) {
-                            // Donner la priorité au proxy qui doit répondre
-                            _state = State::IDLE;
-                            return;
-                        }
-                        state.isProcessingRequest = false;
+                    if (!state.isActive) continue;
+
+                    // Respecte le délai inter-message
+                    if (millis() - state.lastTxTime < state.proxy->getInterMessageDelay()) {
+                        break;  // Attends avant d'envoyer un autre chunk
                     }
 
-                    // 2. Vérifier si un proxy attend une réponse
-                    if (state.config.mode == TransmitMode::SYNCHRONOUS && state.isWaitingResponse) {
-                        if (now - state.lastTxTime <= state.config.txResponseTimeout) {
-                            // Attendre la réponse avant de traiter d'autres messages
-                            _state = State::IDLE;
-                            return;
-                        }
-                        state.isWaitingResponse = false;
-                    }
+                    // Envoie un chunk
+                    sendChunk(state.proxy);
 
-                    // Traitement normal
-                    if (now - state.lastTxTime < state.config.interMessageDelay) {
-                        continue;
-                    }
+                    // Met à jour le délai inter-message après l'envoi
+                    state.lastTxTime = millis();
 
-                    if (state.proxy->txAvailable() > 0) {
-                        size_t toSend = state.config.chunkSize == 0 ? 
-                                       state.proxy->txAvailable() : 1;
-                        
-                        for (size_t j = 0; j < toSend; j++) {
-                            uint8_t data;
-                            if (state.proxy->readFromTx(data)) {
-                                Serial.write(data);
-                            }
-                        }
-                        Serial.flush();
-                        state.lastTxTime = now;
-
-                        if (state.config.mode == TransmitMode::SYNCHRONOUS) {
-                            state.isWaitingResponse = true;
-                            _state = State::IDLE;
-                            return;
-                        }
+                    // Si le buffer est vide, désactive le proxy
+                    if (state.proxy->txAvailable() == 0) {
+                        state.isActive = false;
+                        _state = State::IDLE;  // Reviens à IDLE une fois terminé
+                        return;
                     }
+                    break;  // Un seul proxy actif à la fois
                 }
-                _state = _flushingProxy ? State::FLUSH : State::IDLE;
                 break;
 
-            case State::FLUSH:
-                // Envoie tout le buffer du proxy qui a demandé le flush
-                while (_flushingProxy->txAvailable() > 0) {
-                    uint8_t data;
-                    if (_flushingProxy->readFromTx(data)) {
-                        Serial.write(data);
+
+            case State::FLUSH: {
+                SerialProxyBase* proxy = _flushLock.getOwner();
+                unsigned long startTime = millis();
+
+                // Vider le buffer du proxy
+                while (proxy->txAvailable() > 0) {
+                    sendChunk(proxy);
+
+                    // Vérifie si le timeout est atteint
+                    if (millis() - startTime >= SERIAL_TIMEOUT) {
+                        break;
                     }
                 }
+
+                // Assure que le buffer série est entièrement transmis
                 Serial.flush();
-                _flushingProxy = nullptr;
-                _state = State::IDLE;
+
+                // Vérifie si le buffer du proxy est vide
+                if (proxy->txAvailable() == 0) {
+                    _state = State::IDLE;
+                } 
                 break;
+            }
+
+
+        }
+    }
+private:
+    AsyncSerial() = default;
+
+    static constexpr size_t RX_CHUNK_SIZE = 256;
+    static constexpr unsigned long SERIAL_TIMEOUT = 1000;
+
+    enum class State { IDLE, READ, WRITE, FLUSH };
+
+    struct ProxyState {
+        SerialProxyBase* proxy;
+        unsigned long lastTxTime;
+        bool isActive;  // Indique si le proxy est actuellement actif
+    };
+
+    State _state = State::IDLE;
+    CooperativeLock<SerialProxyBase> _flushLock;
+    ProxyState _proxies[MAX_PROXIES];
+    size_t _proxyCount = 0;
+
+    void sendChunk(SerialProxyBase* proxy) {
+        size_t availableSpace = Serial.availableForWrite();
+        if (availableSpace == 0) return;  // Rien à envoyer si le buffer série est plein
+
+        size_t toSend = min(availableSpace, proxy->txAvailable());
+
+        uint8_t chunk[toSend];
+        size_t bytesRead = 0;
+
+        while (bytesRead < toSend) {
+            if (!proxy->readFromTx(chunk[bytesRead])) break;
+            bytesRead++;
+        }
+
+        if (bytesRead > 0) {
+            Serial.write(chunk, bytesRead);
         }
     }
 
-    void flush(SerialProxy* proxy) {
-        // Attend la fin de la transmission en cours
-        while (_state == State::WRITE) {
-            poll();
-        }
-        
-        // Force l'envoi immédiat du buffer du proxy
-        _flushingProxy = proxy;
-        _state = State::FLUSH;
-        
-        // Attend que le flush soit terminé
-        while (_state == State::FLUSH) {
-            poll();
-        }
-    }
 };
 
 #endif // ASYNCSERIAL_H
