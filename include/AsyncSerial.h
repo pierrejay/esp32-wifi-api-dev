@@ -149,8 +149,8 @@ public:
         _flushLock.acquire(proxy, [this]() { poll(); });
 
         // Attendre que l'état WRITE termine
-        while (_state == State::WRITE) {
-            poll();  // Continue de traiter l'état WRITE jusqu'à ce qu'il se termine
+        while (_state == State::WRITE || _state == State::READ) {
+            poll();  // Continue de traiter l'état WRITE/READ jusqu'à ce qu'il se termine
         }
 
         // Passe au mode FLUSH
@@ -161,7 +161,6 @@ public:
         while (_state == State::FLUSH) {
             poll();
             if (millis() - startTime >= SERIAL_TIMEOUT) {
-                Serial.println("FLUSH timeout: Operation failed.");
                 _flushLock.release(proxy);
                 return false;  // Indique l'échec du flush
             }
@@ -238,7 +237,9 @@ public:
                 SerialProxyBase* proxy = _flushLock.getOwner();
                 unsigned long startTime = millis();
 
-                // Vider le buffer du proxy
+                Serial.flush();  // S'assure que le buffer série est vide avant de commencer
+
+                // Vider le buffer du proxy chunk par chunk
                 while (proxy->txAvailable() > 0) {
                     sendChunk(proxy);
 
@@ -248,8 +249,7 @@ public:
                     }
                 }
 
-                // Assure que le buffer série est entièrement transmis
-                Serial.flush();
+                Serial.flush();  // S'assure que le dernier chunk est bien transmis
 
                 // Vérifie si le buffer du proxy est vide
                 if (proxy->txAvailable() == 0) {
