@@ -94,7 +94,7 @@ Returns a JSON description of all available methods:
 Errors follow standard HTTP status codes:
 - 200: Success
 - 400: Bad Request (invalid parameters)
-- 404: Not Found (invalid endpoint)
+- 404: Not Found (invalid path)
 
 Error responses contain a JSON error message:
 ```json
@@ -102,6 +102,10 @@ Error responses contain a JSON error message:
   "error": "Bad Request"
 }
 ```
+
+### Authentication
+Basic Auth is supported to enforce access to specific methods with credentials (see APIServer doc for registration of an Auth-protected method).
+Please be aware that as credentials are sent as plaintext, they can be intercepted if the connection between client and ESP32 is not secure.
 
 ## WebSocket Events
 
@@ -124,6 +128,9 @@ Events are pushed from server to client as JSON messages:
   }
 }
 ```
+### Authentication
+The WebSocket endpoint does not enforce Basic Auth. Consider excluding sensitive methods from the WebSocket protocol at all.
+
 
 ## Implementation Notes
 
@@ -133,7 +140,7 @@ Events are pushed from server to client as JSON messages:
 - Static file serving from SPIFFS (web interface)
 - WebSocket for real-time events
 - Automatic API documentation endpoint
-- No authentication (designed for local network use)
+- Basic Auth for HTTP requests
 
 ### Memory Management
 

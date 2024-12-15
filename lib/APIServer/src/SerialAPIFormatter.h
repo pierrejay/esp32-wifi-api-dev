@@ -5,7 +5,7 @@
 #include <functional>
 #include <map>
 
-class SerialFormatter {
+class SerialAPIFormatter {
     public:
         static String formatResponse(const String& method, const String& path, const JsonObject& response) {
             String result = method + " " + path + ":";
@@ -121,6 +121,11 @@ class SerialFormatter {
                 // Propriétés de base
                 response += "    ├── type: " + method["type"].as<String>() + "\n";
                 response += "    ├── desc: " + method["desc"].as<String>() + "\n";
+                
+                // BasicAuth si présent
+                if (method.containsKey("basicauth")) {
+                    response += "    ├── basicauth: true\n";
+                }
                 
                 // Protocols
                 response += "    ├── protocols: ";

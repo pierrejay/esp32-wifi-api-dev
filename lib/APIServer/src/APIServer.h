@@ -104,6 +104,14 @@ enum class APIMethodType {
     SET,
     EVT
 };
+constexpr const char* apiMethodTypeToString(APIMethodType type) {
+    switch(type) {
+        case APIMethodType::GET: return "GET";
+        case APIMethodType::SET: return "SET";
+        case APIMethodType::EVT: return "EVT";
+    }
+    return ""; // Pour satisfaire le compilateur
+}
 
 /**
  * @brief Type of parameters authorized for APIParams (enforces types supported by the OpenAPI spec)
@@ -151,9 +159,16 @@ struct APIParam {
         : name(n), type(paramTypeToString(APIParamType::Object)), required(r), properties(props) {}
 };
 
+struct APIBasicAuth {
+    bool enabled = false;
+    String user;
+    String password;
+};
+
 /**
  * @brief API method data
  */
+
 struct APIMethod {
     using Handler = std::function<bool(const JsonObject* args, JsonObject& response)>;
     
@@ -163,6 +178,8 @@ struct APIMethod {
     std::vector<APIParam> requestParams;    // Parameters of the request
     std::vector<APIParam> responseParams;   // Parameters of the response
     std::vector<String> exclusions;         // Liste des protocoles exclus
+    bool hidden = false;                    // Si true, la méthode n'apparaît pas dans la doc
+    APIBasicAuth auth;                      // Basic auth settings if enabled
 };
 
 /**
@@ -229,6 +246,20 @@ public:
         for (const auto& protocol : protocols) {
             _method.exclusions.push_back(protocol);
         }
+        return *this;
+    }
+
+    // Hide this method from API documentation
+    APIMethodBuilder& hide(bool value = true) {
+        _method.hidden = value;
+        return *this;
+    }
+
+    // Add basic authentication to this method
+    APIMethodBuilder& basicauth(const String& user, const String& password) {
+        _method.auth.enabled = true;
+        _method.auth.user = user;
+        _method.auth.password = password;
         return *this;
     }
 
@@ -399,11 +430,19 @@ public:
 
         int methodCount = 0; 
         for (const auto& [path, method] : _methods) {
+            if (method.hidden) {
+                continue;  // Skip hidden methods
+            }
             methodCount++;
             JsonObject methodObj;
             methodObj["path"] = path;
-            methodObj["type"] = toString(method.type);
+            methodObj["type"] = apiMethodTypeToString(method.type);
             methodObj["desc"] = method.description;
+            
+            // Add basic auth info if enabled
+            if (method.auth.enabled) {
+                methodObj["basicauth"] = true;
+            }
             
             // Add supported protocols
             JsonArray protocols = methodObj.createNestedArray("protocols");
@@ -493,27 +532,6 @@ public:
     }
 
     /**
-     * @brief Validate the parameters of a method
-     * @param method The method called
-     * @param args The arguments of incoming request
-     * @return True if the required parameters are present, false otherwise
-     */
-    bool validateParams(const APIMethod& method, const JsonObject* args) const {
-        if (!args && !method.requestParams.empty()) {
-            return false;  // No arguments while expected
-        }
-        if (args) {
-            for (const auto& param : method.requestParams) {
-                if (param.required && !args->containsKey(param.name)) {
-                    return false;  // Missing required parameter
-                }
-                // We don't check the internal structure of objects
-            }
-        }
-        return true;
-    }
-
-    /**
      * @brief Add an endpoint to the API server (called in setup())
      * @param endpoint The endpoint to add
      */
@@ -537,80 +555,29 @@ private:
     std::vector<APIEndpoint*> _endpoints;          // Objects implementing APIEndpoint
     std::map<String, std::vector<String>> _excludedPathsByProtocol; // Excluded paths by protocol
 
-    static String toString(APIMethodType type) {
-        switch (type) {
-            case APIMethodType::GET: return "GET";
-            case APIMethodType::SET: return "SET";
-            case APIMethodType::EVT: return "EVT";
-            default: return "UNKNOWN";
-        }
-    }
 
-    void addMethodToPath(JsonObject& pathObj, const char* method, const APIMethod& apiMethod) {
-        JsonObject methodObj = pathObj.createNestedObject(method);
-        
-        if (apiMethod.description.length() > 0) {
-            methodObj["description"] = apiMethod.description;
+    /**
+     * @brief Validate the parameters of a method
+     * @param method The method called
+     * @param args The arguments of incoming request
+     * @return True if the required parameters are present, false otherwise
+     */
+    bool validateParams(const APIMethod& method, const JsonObject* args) const {
+        if (!args && !method.requestParams.empty()) {
+            return false;  // No arguments while expected
         }
-
-        // Paramètres
-        if (!apiMethod.requestParams.empty()) {
-            JsonArray parameters = methodObj.createNestedArray("parameters");
-            for (const auto& param : apiMethod.requestParams) {
-                JsonObject paramObj = parameters.createNestedObject();
-                addParamToDoc(paramObj, param);
-            }
-        }
-
-        // Réponses
-        JsonObject responses = methodObj.createNestedObject("responses");
-        JsonObject response200 = responses.createNestedObject("200");
-        response200["description"] = "Successful operation";
-        
-        if (!apiMethod.responseParams.empty()) {
-            JsonObject content = response200.createNestedObject("content");
-            JsonObject jsonContent = content.createNestedObject("application/json");
-            JsonObject schema = jsonContent.createNestedObject("schema");
-            addResponseSchemaToDoc(schema, apiMethod.responseParams);
-        }
-    }
-
-    void addParamToDoc(JsonObject& paramObj, const APIParam& param) {
-        paramObj["name"] = param.name;
-        paramObj["in"] = "query";  // Par défaut
-        paramObj["required"] = param.required;
-        
-        JsonObject schema = paramObj.createNestedObject("schema");
-        schema["type"] = param.type;
-        
-        if (!param.properties.empty()) {
-            JsonObject props = schema.createNestedObject("properties");
-            for (const auto& prop : param.properties) {
-                JsonObject propObj = props.createNestedObject(prop.name);
-                propObj["type"] = prop.type;
-            }
-        }
-    }
-
-    void addResponseSchemaToDoc(JsonObject& schema, const std::vector<APIParam>& params) {
-        schema["type"] = "object";
-        
-        if (!params.empty()) {
-            JsonObject properties = schema.createNestedObject("properties");
-            for (const auto& param : params) {
-                JsonObject prop = properties.createNestedObject(param.name);
-                prop["type"] = param.type;
-                
-                if (!param.properties.empty()) {
-                    JsonObject subProps = prop.createNestedObject("properties");
-                    for (const auto& subProp : param.properties) {
-                        JsonObject subPropObj = subProps.createNestedObject(subProp.name);
-                        subPropObj["type"] = subProp.type;
-                    }
+        if (args) {
+            for (const auto& param : method.requestParams) {
+                if (param.required && !args->containsKey(param.name)) {
+                    return false;  // Missing required parameter
                 }
+                // We don't check the internal structure of objects
             }
         }
+        return true;
     }
+
+
 };
 
 #endif // APISERVER_H

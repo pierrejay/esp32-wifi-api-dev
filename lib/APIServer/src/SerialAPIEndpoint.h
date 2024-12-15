@@ -6,7 +6,7 @@
 #include "APIServer.h"
 #include "APIEndpoint.h"
 #include "SerialProxy.h"
-#include "SerialFormatter.h"
+#include "SerialAPIFormatter.h"
 
 class SerialAPIEndpoint : public APIEndpoint {
 public:
@@ -33,7 +33,7 @@ public:
         if (_eventQueue.size() >= QUEUE_SIZE) {
             _eventQueue.pop();
         }
-        _eventQueue.push(SerialFormatter::formatEvent(event, data));
+        _eventQueue.push(SerialAPIFormatter::formatEvent(event, data));
     }
 
 private:
@@ -89,7 +89,7 @@ private:
 
     inline SerialCommand parseCommand(const String& line) const {
         SerialCommand cmd;
-        SerialFormatter::parseCommandLine(line, cmd.method, cmd.path, cmd.params);
+        SerialAPIFormatter::parseCommandLine(line, cmd.method, cmd.path, cmd.params);
         
         // Validate the command
         if (!cmd.method.isEmpty() && !cmd.path.isEmpty() && 
@@ -253,12 +253,12 @@ private:
     }
 
     String formatError(const String& method, const String& path, const String& error) const {
-        return SerialFormatter::formatError(method, path, error);
+        return SerialAPIFormatter::formatError(method, path, error);
     }
 
     void handleCommand(PendingCommand& pendingCmd) {
         SerialCommand cmd;
-        SerialFormatter::parseCommandLine(pendingCmd.command, cmd.method, cmd.path, cmd.params);
+        SerialAPIFormatter::parseCommandLine(pendingCmd.command, cmd.method, cmd.path, cmd.params);
         
         // Validate the command
         cmd.valid = !cmd.method.isEmpty() && !cmd.path.isEmpty() && 
@@ -269,13 +269,37 @@ private:
             return;
         }
 
-        // Handle GET api command separately
+        // Handle GET api (simplified API doc) command separately
         if (cmd.method == "GET" && cmd.path == "api") {
             JsonArray methods;
             int methodCount = _apiServer.getAPIDoc(methods);
             pendingCmd.response = "< GET api\n";
-            pendingCmd.response += SerialFormatter::formatAPIList(methods);
+            pendingCmd.response += SerialAPIFormatter::formatAPIList(methods);
             return;
+        }
+
+        // Get available methods once
+        auto methods = _apiServer.getMethods("serial");
+        auto methodIt = methods.find(cmd.path);
+        if (methodIt == methods.end()) {
+            pendingCmd.response = "< " + formatError(cmd.method, cmd.path, "method not found");
+            return;
+        }
+
+        const APIMethod& method = methodIt->second;
+
+        // Check authentication if required (with basic auth on Serial we only check the password)
+        if (method.auth.enabled) {
+            auto authPass = cmd.params.find("auth.password");
+            
+            if (authPass == cmd.params.end() || 
+                authPass->second != method.auth.password) {
+                pendingCmd.response = "< " + formatError(cmd.method, cmd.path, "authentication failed");
+                return;
+            }
+            
+            // Remove auth params before passing to handler
+            cmd.params.erase("auth.password");
         }
 
         // Convert parameters to JsonObject if present
@@ -307,7 +331,7 @@ private:
         JsonObject response = responseDoc.to<JsonObject>();
         
         if (_apiServer.executeMethod("serial",cmd.path, cmd.params.empty() ? nullptr : &args, response)) {
-            pendingCmd.response = "< " + SerialFormatter::formatResponse(cmd.method, cmd.path, response);
+            pendingCmd.response = "< " + SerialAPIFormatter::formatResponse(cmd.method, cmd.path, response);
         } else {
             pendingCmd.response = "< " + formatError(cmd.method, cmd.path, "wrong request or parameters");
         }
@@ -335,7 +359,6 @@ private:
     bool _apiBufferOverflow = false;                        // Indicates if the buffer has overflowed
     static constexpr unsigned long MODE_RESET_DELAY = 50;   // Grace time between modes
     PendingCommand _currentCommand;                         // Current command
-    
-};
+    };
 
 #endif // SERIALAPIENDPOINT_H

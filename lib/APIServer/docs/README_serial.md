@@ -43,12 +43,21 @@ Error types:
 - `event_name` : Name of the event
 - Event data follows the same format as responses
 
+
+## Basic Auth
+For methods with Basic Auth enabled, the password needs to be provided as a param with `auth.password` when calling the method:
+```
+> GET secure/path: param1=value1,...,auth.password=myPassword
+< GET secure/path: success=true
+```
+
 ## Nested Objects
 Nested objects use dot notation:
 ```
 > SET wifi/sta/config: network.ssid=MyWiFi,network.security.type=WPA2
 < SET wifi/sta/config: success=true
 ```
+
 
 ## API Documentation
 The `GET api` command returns a complete description of available endpoints:
@@ -68,6 +77,7 @@ The `GET api` command returns a complete description of available endpoints:
     wifi/sta/config
     ├── type: SET
     ├── desc: Configure Station mode
+    ├── basicauth: true
     ├── protocols: serial
     ├── params:
     │   ├── enabled: bool
@@ -102,13 +112,19 @@ The `GET api` command returns a complete description of available endpoints:
 < ERROR: error=invalid command
 
 > GET wifi/invalid/path
-< GET wifi/invalid/path: error=wrong request or parameters
+< GET wifi/invalid/path: error=method not found
+
+> SET wifi/ap/config: timeout=1000 (invalid parameter)
+< GET wifi/ap/config: error=wrong request or parameters
 
 > (very long command...)
 < ERROR: error=command too long
 
 > (timeout occurs...)
 < ERROR: error=command timeout
+
+> (command with missing or incorrect password for a basic auth method...)
+< ERROR: error=authentication failed
 ```
 
 ## Implementation Notes

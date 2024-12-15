@@ -57,6 +57,12 @@ private:
         addLinks(apiServer, info, doc);
         addLifecycleInfo(apiServer, info);
         addDeploymentInfo(apiServer, info);
+
+        // Add global BasicAuth security scheme
+        JsonObject securitySchemes = doc["components"]["securitySchemes"].to<JsonObject>();
+        JsonObject basicAuth = securitySchemes["BasicAuth"].to<JsonObject>();
+        basicAuth["type"] = "http";
+        basicAuth["scheme"] = "basic";
     }
 
     /**
@@ -156,6 +162,11 @@ private:
         JsonObject paths = doc["paths"].to<JsonObject>();
         
         for (const auto& [path, method] : apiServer.getMethods()) {
+            // Skip hidden methods
+            if (method.hidden) {
+                continue;
+            }
+
             JsonObject pathItem = paths["/" + String(path)].to<JsonObject>();
             
             const char* httpMethod = (method.type == APIMethodType::SET) ? "post" : 
@@ -166,6 +177,13 @@ private:
                 JsonObject operation = pathItem[httpMethod].to<JsonObject>();
                 operation["description"] = method.description;
                 
+                // Add security requirement if basic auth is enabled
+                if (method.auth.enabled) {
+                    JsonArray security = operation["security"].to<JsonArray>();
+                    JsonObject requirement = security.createNestedObject();
+                    requirement["BasicAuth"] = JsonArray();
+                }
+
                 addTags(path, operation);
                 if (method.type == APIMethodType::GET) {
                     addGetParameters(method, operation);

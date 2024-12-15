@@ -47,6 +47,19 @@ private:
         log(buffer);
     }
 
+    bool checkAuth(AsyncWebServerRequest* request, const APIMethod& method) {
+        if (!method.auth.enabled) {
+            return true; // No auth required
+        }
+
+        if (!request->authenticate(method.auth.user.c_str(), method.auth.password.c_str())) {
+            request->requestAuthentication(); // Sends 401 Unauthorized
+            return false;
+        }
+
+        return true;
+    }
+
 public:
     WebAPIEndpoint(APIServer& apiServer, uint16_t port) 
         : APIEndpoint(apiServer)
@@ -163,8 +176,14 @@ private:
             if (method.type == APIMethodType::GET) {
                 logf("WEBAPI: Enregistrement route GET /api/%s", path.c_str());
                 _server.on(("/api/" + path).c_str(), HTTP_GET, 
-                    [this, path](AsyncWebServerRequest *request) {
+                    [this, path, method](AsyncWebServerRequest *request) {  // Capture method ici
                         logf("WEBAPI: Requête GET reçue sur /api/%s", path.c_str());
+
+                        // Check authentication directly with captured method
+                        if (!checkAuth(request, method)) {
+                            return; // 401 already sent by checkAuth
+                        }
+
                         handleHTTPGet(request, path);
                     });
             }
@@ -176,8 +195,14 @@ private:
                 logf("WEBAPI: Enregistrement route SET /api/%s", path.c_str());
                 auto handler = new AsyncCallbackJsonWebHandler(
                     ("/api/" + path).c_str(),
-                    [this, path](AsyncWebServerRequest* request, JsonVariant& json) {
+                    [this, path, method](AsyncWebServerRequest* request, JsonVariant& json) {  // Capture method ici
                         logf("WEBAPI: Requête SET reçue sur /api/%s", path.c_str());
+
+                        // Check authentication directly with captured method
+                        if (!checkAuth(request, method)) {
+                            return; // 401 already sent by checkAuth
+                        }
+
                         handleHTTPSet(request, path, json.as<JsonObject>());
                     }
                 );

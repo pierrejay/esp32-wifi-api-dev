@@ -124,7 +124,7 @@ Payload: {
 - Event processing interval: 50ms
 - Reconnection interval: 5s
 - Default QoS 0
-- No built-in authentication
+- No built-in authentication: consider excluding sensitive methods
 
 ### Usage Example
 ```cpp
@@ -151,18 +151,3 @@ void loop() {
     apiServer.poll();  // Handle MQTT connection, messages and events
 }
 ```
-
-## Advanced Topics
-
-### Connection Management
-MQTT provides built-in connection management features:
-- Keep-alive mechanism for connection monitoring
-- Last Will Testament (LWT) for connection status
-- Client connection state tracking
-
-### Security Considerations
-Consider implementing:
-- TLS for transport security
-- Username/password authentication
-- Access control through topic restrictions
-- Payload encryption for sensitive data

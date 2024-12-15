@@ -465,6 +465,11 @@ The exclusions are:
 - Reflected in the API documentation
 - Applied at the protocol level (excluded methods are not visible to clients)
 
+### Other possible overrides
+
+- `.hide()` : the method is be created, but does not appear in documentation at all
+- `.basicauth(String user, String password)` : enables HTTP basic auth to access the method
+
 ### Naming Patterns tips
 - Use hierarchical paths consistent with API modules: `component/resource`
 - Use plural for collections: `clients/list`
@@ -505,6 +510,7 @@ The library automatically generates a comprehensive, simplified API documentatio
     "path": "wifi/sta/config",
     "type": "SET",
     "desc": "Configure Station mode",
+    "basicauth": true,
     "protocols": ["http"],
     "params": {
       "enabled": "bool",
