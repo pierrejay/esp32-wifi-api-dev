@@ -244,11 +244,11 @@ void loop() {
         .desc("Configure Access Point")
         .param("enabled", APIParamType::Boolean)
         .param("ssid", APIParamType::String)
-        .param("password", APIParamType::String)
-        .param("channel", APIParamType::Integer)
-        .param("ip", APIParamType::String, false)       // Optional parameter
-        .param("gateway", APIParamType::String, false)  // Optional parameter
-        .param("subnet", APIParamType::String, false)   // Optional parameter
+        .param("password", APIParamType::String, {8,25})  // Password length limited
+        .param("channel", APIParamType::Integer, {1,13})  // Channel n° limited
+        .param("ip", APIParamType::String, false)         // Optional parameter
+        .param("gateway", APIParamType::String, false)    // Optional parameter
+        .param("subnet", APIParamType::String, false)     // Optional parameter
         .response("success", APIParamType::Boolean)
         .build()
     );
@@ -315,6 +315,7 @@ apiServer.registerMethod("wifi", "wifi/sta/config",
 - Server-initiated notifications
 - No request parameters
 - One-way communication (server to client)
+See "broadcasting events" section in the appropriate section to get some tips
 
 ```cpp
 apiServer.registerMethod("wifi", "wifi/events",
@@ -325,7 +326,95 @@ apiServer.registerMethod("wifi", "wifi/events",
 );
 ```
 
-##### Broadcasting Events
+### Nested Objects
+The library supports nested objects at any depth level through recursive implementation.
+
+#### Nested Object Example
+```cpp
+.response("status", {
+    {"wifi", {
+        {"enabled", "bool"},
+        {"rssi", "int"},
+        {"config", {
+            {"ssid", "string"},
+            {"password", "string"}
+        }}
+    }}
+})
+```
+
+### Parameter Properties
+
+#### Required vs Optional Parameters
+Parameters can be marked as required (default) or optional using a boolean flag:
+
+```cpp
+// Different ways to declare parameters
+.param("ssid", APIParamType::String)          // Required parameter (default)
+.param("password", APIParamType::String)      // Required parameter (default)
+.param("channel", APIParamType::Integer)      // Required parameter (default)
+.param("ip", APIParamType::String, false)     // Optional parameter
+.param("gateway", APIParamType::String, false) // Optional parameter
+```
+
+#### Parameter constraints
+You can also specify value constraints for numeric parameters and length constraints for string parameters:
+
+```cpp
+// Numeric constraints
+{"clients", APIParamType::Integer, {0, 8}}         // With value range + required
+{"count", APIParamType::Integer, {1, 100}, false}  // With value range + optional
+
+// String constraints
+{"ip", APIParamType::String, {7, 15}}             // With length range + required
+{"desc", APIParamType::String, {0, 1000}, false}  // With length range + optional
+```
+Only numeric & string parameters (i.e. excludes `Boolean` and `Object`) can have defined limits.
+
+> **Important Note:**  
+> These constraints are for documentation purposes only. 
+> Actual value validation should be implemented in your business logic.
+> More explanation in the "Parameter validation" section below.
+
+### Protocol exclusions
+Methods can be configured to exclude specific protocols. This is useful when certain operations should not be available through specific communication channels (for security or technical reasons).
+```cpp
+// Exclude a single protocol
+apiServer.registerMethod("wifi", "wifi/password",
+    APIMethodBuilder(APIMethodType::GET, handler)
+        .desc("Get WiFi password")
+        .response("password", "string")
+        .excl("http")  // Exclude from HTTP
+        .build()
+);
+
+// Exclude multiple protocols
+apiServer.registerMethod("system", "system/reset",
+    APIMethodBuilder(APIMethodType::SET, handler)
+        .desc("Reset system")
+        .param("delay", "int")
+        .response("success", "bool")
+        .excl({"http", "mqtt"})  // Exclude from both HTTP and MQTT
+        .build()
+);
+```
+The exclusions are:
+- Automatically handled by the API Server
+- Reflected in the API documentation
+- Applied at the protocol level (excluded methods are not visible to clients)
+
+### Other possible overrides
+
+- `.hide()` : the method is be created, but does not appear in documentation at all
+- `.basicauth(String user, String password)` : enables HTTP basic auth to access the method
+
+### Naming Patterns tips
+- Use hierarchical paths consistent with API modules: `component/resource`
+- Use plural for collections: `clients/list`
+- Include action in path: `wifi/scan`
+- Clear & direct methods possible: `get_wifi_status`
+
+### Broadcasting Events
 Unlike other methods, events are not handled automatically upon client request, they must be called by the application API (for example to signal a status change to all connected clients) with the `broadcast` method.
 
 Similar to route registration, a call to `broadcast` does not enforce using the proper path. It is the responsibility of the user to ensure that a consistent path is used across event method registration & calls to `broadcast`. This choice allows a maximal flexibility in designing the API as desired by end users.
@@ -421,66 +510,16 @@ Basically, an event will be passed to endpoints as two fields:
 }
 ```
 
-### Nested Objects
-The library supports nested objects at any depth level through recursive implementation.
-
-#### Nested Object Example
-```cpp
-.response("status", {
-    {"wifi", {
-        {"enabled", "bool"},
-        {"rssi", "int"},
-        {"config", {
-            {"ssid", "string"},
-            {"password", "string"}
-        }}
-    }}
-})
-```
-
-### Protocol exclusions
-Methods can be configured to exclude specific protocols. This is useful when certain operations should not be available through specific communication channels (for security or technical reasons).
-```cpp
-// Exclude a single protocol
-apiServer.registerMethod("wifi", "wifi/password",
-    APIMethodBuilder(APIMethodType::GET, handler)
-        .desc("Get WiFi password")
-        .response("password", "string")
-        .excl("http")  // Exclude from HTTP
-        .build()
-);
-
-// Exclude multiple protocols
-apiServer.registerMethod("system", "system/reset",
-    APIMethodBuilder(APIMethodType::SET, handler)
-        .desc("Reset system")
-        .param("delay", "int")
-        .response("success", "bool")
-        .excl({"http", "mqtt"})  // Exclude from both HTTP and MQTT
-        .build()
-);
-```
-The exclusions are:
-- Automatically handled by the API Server
-- Reflected in the API documentation
-- Applied at the protocol level (excluded methods are not visible to clients)
-
-### Other possible overrides
-
-- `.hide()` : the method is be created, but does not appear in documentation at all
-- `.basicauth(String user, String password)` : enables HTTP basic auth to access the method
-
-### Naming Patterns tips
-- Use hierarchical paths consistent with API modules: `component/resource`
-- Use plural for collections: `clients/list`
-- Include action in path: `wifi/scan`
-- Clear & direct methods possible: `get_wifi_status`
-
 ## Documentation
 
 ### Simplified Documentation
 
-The library automatically generates a comprehensive, simplified API documentation in JSON format. This dynamically-generated documentation is available at the root (e.g. `GET /api` for HTTP API). It provides a complete description of all available methods, their expected parameters (required/optional), and response structures.
+The library automatically generates a comprehensive, simplified API documentation in JSON format. This dynamically-generated documentation is available at the root (e.g. `GET /api` for HTTP API). It provides a complete description of all available methods, their expected parameters & constraints, and response structures.
+
+#### Parameter constraints
+- Optional request & response parameters are marked with a `*` suffix.
+- Request value limits are marked with braces : `[min,max]` (value for numbers, length for strings).
+
 
 #### Example Generated Simplified Documentation
 ```json
@@ -515,14 +554,8 @@ The library automatically generates a comprehensive, simplified API documentatio
     "params": {
       "enabled": "bool",
       "network": {
-        "ssid": "string",
-        "password": "string",
-        "security": {
-          "type": "string",
-          "certificates": {
-            "ca": "string*",
-            "client": "string*"
-          }
+        "ssid": "string*",
+        "password": "string* [8,25]"
         }
       }
     },
@@ -533,7 +566,6 @@ The library automatically generates a comprehensive, simplified API documentatio
   }]
 }
 ```
-Optional request & response parameters are marked with a `*` suffix.
 
 ### OpenAPI Documentation
 The library can generate a fully compliant OpenAPI 3.1.1 documentation in JSON format.

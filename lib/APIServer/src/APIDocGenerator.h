@@ -276,6 +276,18 @@ private:
                 }
             } else {
                 prop["type"] = toLowerCase(param.type);
+                
+                // Add constraints if defined
+                if (param.hasLimits) {
+                    if (param.type == "string") {
+                        prop["minLength"] = (int)param.min;
+                        prop["maxLength"] = (int)param.max;
+                    } 
+                    else if (param.type == "integer" || param.type == "number") {
+                        prop["minimum"] = param.min;
+                        prop["maximum"] = param.max;
+                    }
+                }
             }
             
             if (param.required) {

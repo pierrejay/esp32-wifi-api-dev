@@ -149,12 +149,39 @@ struct APIParam {
     String type;                        // "boolean", "integer", "number", "string", "object"
     bool required = true;               // Default to true (can be dismissed in constructor)
     std::vector<APIParam> properties;   // Stores nested objects (recursive)
+    float min = 0;
+    float max = 0;
+    bool hasLimits = false;
 
-    // Constructor to ease initialization
+    // Base constructor without limits (r optional)
     APIParam(const String& n, APIParamType t, bool r = true) 
         : name(n), type(paramTypeToString(t)), required(r) {}
 
-    // Overloaded constructor for recursive nested objects
+    // Constructor with limits (implicit r = true by default)
+    APIParam(const String& n, APIParamType t, const std::initializer_list<float>& limits)
+        : name(n), type(paramTypeToString(t)), required(true)
+    {
+        if (t != APIParamType::Object && t != APIParamType::Boolean && limits.size() == 2) {
+            auto it = limits.begin();
+            min = *it++;
+            max = *it;
+            hasLimits = true;
+        }
+    }
+
+    // Constructor with limits + explicit required
+    APIParam(const String& n, APIParamType t, const std::initializer_list<float>& limits, bool r)
+        : name(n), type(paramTypeToString(t)), required(r)
+    {
+        if (t != APIParamType::Object && t != APIParamType::Boolean && limits.size() == 2) {
+            auto it = limits.begin();
+            min = *it++;
+            max = *it;
+            hasLimits = true;
+        }
+    }
+
+    // Constructor for nested objects
     APIParam(const String& n, const std::initializer_list<APIParam>& props, bool r = true)
         : name(n), type(paramTypeToString(APIParamType::Object)), required(r), properties(props) {}
 };
@@ -216,20 +243,26 @@ public:
         _method.requestParams.push_back(APIParam(name, type, required));
         return *this;
     }
-    
-    // Overloaded param constructor for nested objects
+
+    // Add a simple parameter to the method with limits
+    APIMethodBuilder& param(const String& name, APIParamType type, const std::initializer_list<float>& limits, bool required = true) {
+        _method.requestParams.push_back(APIParam(name, type, limits, required));
+        return *this;
+    }
+
+    // Add a nested object parameter to the method
     APIMethodBuilder& param(const String& name, const std::initializer_list<APIParam>& props, bool required = true) {
         _method.requestParams.push_back(APIParam(name, props, required));
         return *this;
     }
-    
+
     // Add a simple response parameter to the method
     APIMethodBuilder& response(const String& name, APIParamType type, bool required = true) {
         _method.responseParams.push_back(APIParam(name, type, required));
         return *this;
     }
-    
-    // Overloaded response constructor for nested objects
+
+    // Add a nested object response parameter to the method
     APIMethodBuilder& response(const String& name, const std::initializer_list<APIParam>& props, bool required = true) {
         _method.responseParams.push_back(APIParam(name, props, required));
         return *this;
@@ -420,11 +453,21 @@ public:
                         if (prop.type == "object") {
                             addObjectParams(nested, prop);
                         } else {
-                            nested[prop.name] = prop.required ? prop.type : prop.type + "*";
+                            String typeStr = prop.required ? prop.type : prop.type + "*";
+                            if (prop.hasLimits) {
+                                typeStr += String(" [") + String(prop.min, prop.type == "integer" ? 0 : 1) 
+                                        + "," + String(prop.max, prop.type == "integer" ? 0 : 1) + "]";
+                            }
+                            nested[prop.name] = typeStr;
                         }
                     }
                 } else {
-                    obj[param.name] = param.required ? param.type : param.type + "*";
+                    String typeStr = param.required ? param.type : param.type + "*";
+                    if (param.hasLimits) {
+                        typeStr += String(" [") + String(param.min, param.type == "integer" ? 0 : 1) 
+                                + "," + String(param.max, param.type == "integer" ? 0 : 1) + "]";
+                    }
+                    obj[param.name] = typeStr;
                 }
             };
 
